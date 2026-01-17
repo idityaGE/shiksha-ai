@@ -284,7 +284,6 @@ $$;
 -- Example: select compute_user_streak('some-uuid');
 
 
-
 /*
  recompute_user_topic_weakness:
   - aggregates quiz performance + tutor questions for user per topic_master
@@ -296,6 +295,8 @@ create or replace function recompute_user_topic_weakness(p_user_id uuid)
 returns void language plpgsql as $$
 declare
   rec record;
+  v_weakness_score numeric;
+  v_evidence_count int;
 begin
   -- Aggregate quiz data per topic (subject, chapter, topic) using quizzes & quiz_attempts
   for rec in
@@ -330,38 +331,27 @@ begin
     -- If no quizzes, avg_quiz_score will be 0; questions_asked will influence score
     -- weights: quiz component 0.7, question component 0.3
     -- question impact capped at 100 (e.g. >10 questions saturates)
-    perform
-      insert into user_topic_weakness (user_id, topic_master_id, subject, chapter, topic, weakness_score, evidence_count, last_computed_at)
-      values (
-        p_user_id,
-        rec.topic_master_id,
-        rec.subject,
-        rec.chapter,
-        rec.topic,
-        greatest(0, least(100,
-          (0.7 * (100 - coalesce(rec.avg_quiz_score,0))) + (0.3 * least(100, (coalesce(rec.questions_asked,0) * 10)))
-        )),
-        (coalesce(rec.quizzes_taken,0) + coalesce(rec.questions_asked,0)),
-        now()
-      )
-      on conflict (user_id, topic_master_id) do update
-      set weakness_score = excluded.weakness_score,
-          evidence_count = excluded.evidence_count,
-          last_computed_at = excluded.last_computed_at;
+    v_weakness_score := greatest(0, least(100,
+      (0.7 * (100 - coalesce(rec.avg_quiz_score,0))) + (0.3 * least(100, (coalesce(rec.questions_asked,0) * 10)))
+    ));
+    
+    v_evidence_count := coalesce(rec.quizzes_taken,0) + coalesce(rec.questions_asked,0);
+    
+    insert into user_topic_weakness (user_id, topic_master_id, subject, chapter, topic, weakness_score, evidence_count, last_computed_at)
+    values (
+      p_user_id,
+      rec.topic_master_id,
+      rec.subject,
+      rec.chapter,
+      rec.topic,
+      v_weakness_score,
+      v_evidence_count,
+      now()
+    )
+    on conflict (user_id, topic_master_id) do update
+    set weakness_score = excluded.weakness_score,
+        evidence_count = excluded.evidence_count,
+        last_computed_at = excluded.last_computed_at;
   end loop;
 end;
 $$;
-
--- Example usage:
--- SELECT recompute_user_topic_weakness('user-uuid');
-
--- =========================
--- Notes:
--- 1) Run recompute_user_topic_weakness periodically (cron job, worker) or after key events:
---    - after a quiz_attempt is submitted
---    - after tutor_messages have been processed & detected_topic filled
--- 2) Planner should query user_topic_weakness ORDER BY weakness_score DESC LIMIT N to pick top weak areas.
--- 3) compute_user_streak can be run daily or on-demand. You may also record the longest_streak by comparing and updating user_streaks.longest_streak_days.
--- 4) You can expand topic_master to include taxonomy ids for subjects mapped across boards/languages.
--- 5) ncert_chunks table holds textual chunk metadata for RAG; vectors should be stored in the vector DB (FAISS/Chroma) and referenced via external_vector_id.
--- =========================
