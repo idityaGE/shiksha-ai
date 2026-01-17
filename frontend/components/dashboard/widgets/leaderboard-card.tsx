@@ -35,10 +35,12 @@ export function LeaderboardCard({ compact = false }: LeaderboardCardProps) {
   const fetchLeaderboardData = async () => {
     try {
       setLoading(true);
-      const [performers, rank] = await Promise.all([
-        leaderboardApi.getTopPerformers(userClass, 5).catch(() => []),
-        leaderboardApi.getMyRank().catch(() => null),
-      ]);
+      // Fetch sequentially to avoid rate limiting
+      const performersRes = await leaderboardApi.getTopPerformers(userClass, 5).catch(() => null);
+      const rank = await leaderboardApi.getMyRank().catch(() => null);
+      
+      // Backend returns { top_performers: [...] }
+      const performers = (performersRes as any)?.top_performers || [];
       setTopPerformers(performers);
       setMyRank(rank);
     } catch (error) {

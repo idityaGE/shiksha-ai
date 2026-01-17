@@ -7,11 +7,9 @@ import {
   RiRobot2Line,
   RiQuestionLine,
   RiCalendarLine,
-  RiBarChartBoxLine,
   RiBookOpenLine,
   RiSettings3Line,
   RiLogoutBoxLine,
-  RiUserLine,
   RiMoreFill,
   RiCheckboxCircleLine,
   RiMedalLine,
@@ -48,11 +46,6 @@ const mainNav = [
   { name: 'Progress', href: '/dashboard/progress', icon: RiCheckboxCircleLine },
   { name: 'Study Planner', href: '/dashboard/planner', icon: RiCalendarLine },
   { name: 'Leaderboard', href: '/dashboard/leaderboard', icon: RiMedalLine },
-  { name: 'Analytics', href: '/dashboard/analytics', icon: RiBarChartBoxLine },
-];
-
-const secondaryNav = [
-  { name: 'Resources', href: '/dashboard/resources', icon: RiBookOpenLine },
 ];
 
 export function AppSidebar() {
@@ -82,7 +75,7 @@ export function AppSidebar() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <RiBookOpenLine className="h-5 w-5" />
           </div>
-          <div className="flex flex-col">
+          <div className="flex flex-col group-data-[state=collapsed]:hidden">
             <span className="text-sm font-semibold">Shiksha AI</span>
             <span className="text-xs text-muted-foreground">Learn Smarter</span>
           </div>
@@ -112,29 +105,6 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarSeparator />
-
-        <SidebarGroup>
-          <SidebarGroupLabel>More</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {secondaryNav.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname === item.href}
-                    tooltip={item.name}
-                  >
-                    <Link href={item.href}>
-                      <item.icon />
-                      <span>{item.name}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter>

@@ -24,7 +24,26 @@ class ApiClient {
         headers,
       });
 
-      const data = await response.json();
+      // Handle rate limiting (429) - returns plain text
+      if (response.status === 429) {
+        const errorMessage = 'Too many requests. Please wait a moment.';
+        toast.error(errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      // Try to parse JSON, handle non-JSON responses
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        if (!response.ok) {
+          toast.error(text || 'An error occurred');
+          throw new Error(text || 'An error occurred');
+        }
+        return text as T;
+      }
 
       if (!response.ok) {
         // Extract error message from various possible formats
@@ -43,6 +62,13 @@ class ApiClient {
           }
         }
         
+        // Handle 401 unauthorized - clear token and redirect
+        if (response.status === 401) {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('token');
+          }
+        }
+        
         toast.error(errorMessage);
         throw new Error(errorMessage);
       }
@@ -51,10 +77,6 @@ class ApiClient {
     } catch (error) {
       // Handle network errors or JSON parsing errors
       if (error instanceof Error) {
-        // Don't show duplicate toast if we already showed one
-        if (!error.message.includes('An error occurred')) {
-          throw error;
-        }
         throw error;
       }
       const networkError = 'Network error occurred. Please check your connection.';

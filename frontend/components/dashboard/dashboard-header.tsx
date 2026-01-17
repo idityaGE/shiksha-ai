@@ -18,8 +18,8 @@ const routeNames: Record<string, string> = {
   tutor: 'AI Tutor',
   quiz: 'Quiz',
   planner: 'Study Planner',
-  analytics: 'Analytics',
-  resources: 'Resources',
+  progress: 'Progress',
+  leaderboard: 'Leaderboard',
   settings: 'Settings',
 };
 

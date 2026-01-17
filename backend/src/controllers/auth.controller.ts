@@ -97,10 +97,24 @@ export const login = async (req: AuthRequest, res: Response) => {
   if (error) throw new UnauthorizedError('Invalid email or password');
   if (!data.user) throw new UnauthorizedError('Authentication failed');
 
+  // Fetch user profile with weak_topics
+  const { data: userData, error: userError } = await supabase
+    .from('users')
+    .select('*, user_profile(*)')
+    .eq('id', data.user.id)
+    .single();
+
+  if (userError) throw new DatabaseError(userError.message);
+
   res.json(
     successResponse(
       {
-        user: data.user,
+        user: {
+          id: userData.id,
+          email: userData.email,
+          name: userData.name,
+        },
+        profile: userData.user_profile,
         session: data.session,
       },
       'Login successful'
@@ -143,5 +157,14 @@ export const getUser = async (req: AuthRequest, res: Response) => {
   if (error) throw new DatabaseError(error.message);
   if (!data) throw new NotFoundError('User not found');
 
-  res.json(successResponse(data));
+  // Return in expected format: { user, profile }
+  res.json(successResponse({
+    user: {
+      id: data.id,
+      email: data.email,
+      name: data.name,
+      created_at: data.created_at,
+    },
+    profile: data.user_profile,
+  }));
 };

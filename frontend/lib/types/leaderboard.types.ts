@@ -52,22 +52,31 @@ export interface UserRank {
 
 // Overall leaderboard response
 export interface LeaderboardResponse {
-  entries: LeaderboardEntry[];
-  total: number;
-  updatedAt: string | null;
+  class: number;
+  leaderboard: LeaderboardEntry[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+  };
+  updated_at: string | null;
 }
 
 // Subject leaderboard response
 export interface SubjectLeaderboardResponse {
-  entries: SubjectLeaderboardEntry[];
+  class: number;
   subject: string;
+  leaderboard: SubjectLeaderboardEntry[];
 }
 
 // Period leaderboard response (weekly/monthly)
 export interface PeriodLeaderboardResponse {
-  entries: PeriodLeaderboardEntry[];
+  class: number;
+  period: string;
   period_start: string;
   period_end: string;
+  leaderboard: PeriodLeaderboardEntry[];
+  total: number;
 }
 
 // Leaderboard settings

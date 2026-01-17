@@ -105,6 +105,13 @@ export const useAuthStore = create<AuthState>()(
           return;
         }
 
+        // If we already have user data, don't refetch
+        const state = get();
+        if (state.user && state.isAuthenticated) {
+          set({ isLoading: false });
+          return;
+        }
+
         set({ isLoading: true });
         try {
           const data = await authApi.me();
@@ -115,15 +122,27 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
           });
         } catch (error) {
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('token');
+          // Only clear auth on actual auth failures (401), not on other errors
+          const errorMessage = error instanceof Error ? error.message : '';
+          const isRateLimited = errorMessage.includes('Too many requests');
+          const isNetworkError = errorMessage.includes('Network error');
+          const isValidationError = errorMessage.includes('Validation');
+          const isAuthError = errorMessage.includes('Unauthorized') || 
+                              errorMessage.includes('Invalid token') ||
+                              errorMessage.includes('Token expired');
+          
+          // Only logout on actual auth errors
+          if (isAuthError && !isRateLimited && !isNetworkError && !isValidationError) {
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('token');
+            }
+            set({ 
+              isAuthenticated: false,
+              user: null,
+              profile: null,
+              token: null,
+            });
           }
-          set({ 
-            isAuthenticated: false,
-            user: null,
-            profile: null,
-            token: null,
-          });
         } finally {
           set({ isLoading: false });
         }
@@ -137,6 +156,9 @@ export const useAuthStore = create<AuthState>()(
       name: 'shiksha-auth-storage',
       partialize: (state) => ({
         token: state.token,
+        user: state.user,
+        profile: state.profile,
+        isAuthenticated: state.isAuthenticated,
         showOnboarding: state.showOnboarding,
       }),
     }

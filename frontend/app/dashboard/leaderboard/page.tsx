@@ -104,16 +104,24 @@ export default function LeaderboardPage() {
       if (dataResult) {
         switch (activeTab) {
           case 'overall':
-            setOverallData((dataResult as any).entries || []);
+            setOverallData((dataResult as any).leaderboard || []);
             break;
           case 'weekly':
-            setWeeklyData(dataResult as any);
+            setWeeklyData({
+              entries: (dataResult as any).leaderboard || [],
+              period_start: (dataResult as any).period_start || '',
+              period_end: (dataResult as any).period_end || '',
+            });
             break;
           case 'monthly':
-            setMonthlyData(dataResult as any);
+            setMonthlyData({
+              entries: (dataResult as any).leaderboard || [],
+              period_start: (dataResult as any).period_start || '',
+              period_end: (dataResult as any).period_end || '',
+            });
             break;
           case 'subject':
-            setSubjectData((dataResult as any).entries || dataResult || []);
+            setSubjectData((dataResult as any).leaderboard || []);
             break;
         }
       }
