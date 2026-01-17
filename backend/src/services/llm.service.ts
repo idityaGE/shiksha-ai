@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { logger, logAIRequest, logAIResponse, logStreamStart, logStreamEnd, logError } from '../utils/logger';
 import { ExternalServiceError } from '../utils/apiError';
 import type { TutorPromptContext } from '../prompts';
-import { getTutorSystemPrompt } from '../prompts';
+import { getTutorSystemPrompt, getTutorFollowUpSystemPrompt, getSessionTitlePrompt } from '../prompts';
 import { TUTOR_EVALUATION_SYSTEM_PROMPT } from '../prompts/iq.prompts';
 import { iqService, type TutorEvaluation } from './iq.service';
 
@@ -339,6 +339,102 @@ Do NOT call for greetings, clarifications, or off-topic questions.`,
       logError(error as Error, {
         service: 'LLM',
         method: 'streamTutorWithEvaluation',
+        userId,
+        duration,
+        context: context.answerMode,
+      });
+      throw new ExternalServiceError('AI service unavailable. Please try again in a moment.');
+    }
+  }
+
+  /**
+   * Generate a short title for a tutoring session
+   * Uses the small model for efficiency
+   */
+  async generateSessionTitle(question: string, subject: string, userId?: string): Promise<string> {
+    const prompt = getSessionTitlePrompt(question, subject);
+    const modelName = process.env.OPENAI_MODEL_UTILITY || 'gpt-4o-mini';
+
+    logAIRequest(modelName, prompt.length, userId, { task: 'session_title' });
+    const startTime = Date.now();
+
+    try {
+      const result = await generateText({
+        model: this.utilityModel,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3, // Lower temperature for more consistent titles
+        maxRetries: 2,
+      });
+
+      const duration = Date.now() - startTime;
+      logAIResponse(modelName, result.usage?.totalTokens || 0, duration, userId);
+
+      // Clean up the title - remove quotes, trim, and limit length
+      let title = result.text.trim().replace(/^["']|["']$/g, '');
+      if (title.length > 50) {
+        title = title.substring(0, 47) + '...';
+      }
+      
+      return title || 'Untitled Chat';
+    } catch (error) {
+      logError(error as Error, { service: 'LLM', method: 'generateSessionTitle', userId });
+      return 'Untitled Chat';
+    }
+  }
+
+  /**
+   * Stream a follow-up tutor response using the small model
+   * Used for subsequent questions in an existing session
+   */
+  async streamTutorFollowUp(
+    context: TutorPromptContext,
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+    userId?: string
+  ) {
+    const systemPrompt = getTutorFollowUpSystemPrompt(context);
+    const modelName = process.env.OPENAI_MODEL_UTILITY || 'gpt-4o-mini';
+
+    logAIRequest(modelName, systemPrompt.length, userId, {
+      answerMode: context.answerMode,
+      subject: context.subject,
+      isFollowUp: true,
+      historyLength: conversationHistory.length,
+    });
+
+    logStreamStart(modelName, userId, { answerMode: context.answerMode, isFollowUp: true });
+    const startTime = Date.now();
+
+    try {
+      // Limit conversation history to last 10 messages for context efficiency
+      const recentHistory = conversationHistory.slice(-10);
+      
+      const result = await streamText({
+        model: this.utilityModel,
+        system: systemPrompt,
+        messages: [...recentHistory, { role: 'user', content: context.question }],
+        temperature: 0.7,
+        maxRetries: 2,
+      });
+
+      // Log when stream completes
+      if (result.usage) {
+        result.usage.then((usage) => {
+          const duration = Date.now() - startTime;
+          logStreamEnd(modelName, duration, usage.totalTokens, userId, {
+            answerMode: context.answerMode,
+            isFollowUp: true,
+          });
+        });
+      }
+
+      return {
+        textStream: result.textStream,
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logError(error as Error, {
+        service: 'LLM',
+        method: 'streamTutorFollowUp',
         userId,
         duration,
         context: context.answerMode,

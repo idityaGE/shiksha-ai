@@ -14,12 +14,12 @@ router.use(authenticate);
 router.post('/ask', validate(askQuestionSchema), asyncHandler(tutorController.askQuestion));
 
 // GET /api/tutor/sessions - List all sessions for user (with pagination)
-router.get('/sessions', validate(listSessionsSchema), asyncHandler(tutorController.listSessions));
+router.get('/sessions', validate(listSessionsSchema, 'query'), asyncHandler(tutorController.listSessions));
 
 // GET /api/tutor/session/:session_id - Get session with messages
-router.get('/session/:session_id', validate(getSessionSchema), asyncHandler(tutorController.getSession));
+router.get('/session/:session_id', validate(getSessionSchema, 'params'), asyncHandler(tutorController.getSession));
 
 // DELETE /api/tutor/session/:session_id - Delete session
-router.delete('/session/:session_id', validate(deleteSessionSchema), asyncHandler(tutorController.deleteSession));
+router.delete('/session/:session_id', validate(deleteSessionSchema, 'params'), asyncHandler(tutorController.deleteSession));
 
 export default router;

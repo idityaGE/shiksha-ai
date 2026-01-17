@@ -1,12 +1,22 @@
 import { z } from 'zod';
 
 /**
+ * Answer modes for tutor responses
+ * - simple: Easy language, everyday examples, conversational
+ * - quick: Brief 2-3 sentences, key facts only
+ * - detailed: Full explanation with examples, step-by-step
+ * - exam: Exam-ready format, NCERT terminology, proper structure
+ */
+export const answerModeSchema = z.enum(['simple', 'quick', 'detailed', 'exam']);
+export type AnswerMode = z.infer<typeof answerModeSchema>;
+
+/**
  * Schema for asking a question (streaming endpoint)
  */
 export const askQuestionSchema = z.object({
   session_id: z.string().uuid().optional(),
   question: z.string().min(1, 'Question is required').max(2000, 'Question too long'),
-  answer_mode: z.enum(['simple', '2-mark', '5-mark', 'topper']).default('simple'),
+  answer_mode: answerModeSchema.default('simple'),
   subject: z.string().optional(), // Optional hint for better RAG search
   chapter: z.string().optional(), // Optional hint for better RAG search
 });
@@ -19,11 +29,11 @@ export const getSessionSchema = z.object({
 });
 
 /**
- * Schema for listing user sessions
+ * Schema for listing user sessions (query params come as strings)
  */
 export const listSessionsSchema = z.object({
-  limit: z.number().int().min(1).max(100).optional().default(10),
-  offset: z.number().int().min(0).optional().default(0),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  offset: z.coerce.number().int().min(0).optional().default(0),
 });
 
 /**
