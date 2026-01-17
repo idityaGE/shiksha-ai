@@ -87,8 +87,9 @@ export const askQuestion = async (req: AuthRequest, res: Response) => {
       5
     );
 
-    // 6. Stream AI response
-    const stream = await llmService.streamTutorAnswer(
+    // 6. Stream AI response with IQ evaluation
+    // Use the evaluation-enabled streaming for substantive questions
+    const streamResult = await llmService.streamTutorWithEvaluation(
       {
         studentClass: profileData.class,
         board: profileData.board,
@@ -97,8 +98,11 @@ export const askQuestion = async (req: AuthRequest, res: Response) => {
         ragContext: ragContext.contextText,
         answerMode: answer_mode,
       },
-      userId
+      userId,
+      sessionId as string // sessionId is guaranteed to be set at this point
     );
+
+    const stream = streamResult.textStream;
 
     // 7. Setup SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -155,7 +159,16 @@ export const askQuestion = async (req: AuthRequest, res: Response) => {
     res.end();
 
   } catch (error) {
-    logger.error({ error, userId, question }, 'Error in askQuestion');
+    // Properly extract error message for logging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    logger.error({ 
+      errorMessage, 
+      errorStack,
+      userId, 
+      question 
+    }, 'Error in askQuestion');
     
     // Send error event if stream hasn't started
     if (!res.headersSent) {

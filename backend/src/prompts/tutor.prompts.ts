@@ -8,7 +8,7 @@ export interface TutorPromptContext {
   subject: string;
   question: string;
   ragContext: string;
-  answerMode: 'simple' | '2-mark' | '5-mark' | 'topper';
+  answerMode?: 'simple' | '2-mark' | '5-mark' | 'topper'; // Optional, defaults to 'simple'
   conversationHistory?: string; // For follow-up questions
 }
 
@@ -55,7 +55,12 @@ Structure with clear headings and bullet points. Aim for excellence.`,
  * Generate system prompt for tutor based on context
  */
 export const getTutorSystemPrompt = (context: TutorPromptContext): string => {
-  const modeInstruction = ANSWER_MODE_INSTRUCTIONS[context.answerMode].replace(
+  // Default to 'simple' mode if not provided or invalid
+  const answerMode = context.answerMode && ANSWER_MODE_INSTRUCTIONS[context.answerMode] 
+    ? context.answerMode 
+    : 'simple';
+  
+  const modeInstruction = ANSWER_MODE_INSTRUCTIONS[answerMode].replace(
     '{class}',
     context.studentClass.toString()
   );
@@ -70,7 +75,7 @@ export const getTutorSystemPrompt = (context: TutorPromptContext): string => {
 **NCERT Reference Material:**
 ${context.ragContext || 'No specific NCERT context found. Use general knowledge but stay aligned with the NCERT Class ' + context.studentClass + ' curriculum for ' + context.subject + '.'}
 
-**Answer Mode: ${context.answerMode.toUpperCase()}**
+**Answer Mode: ${answerMode.toUpperCase()}**
 ${modeInstruction}
 
 **Important Guidelines:**

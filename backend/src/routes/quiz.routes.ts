@@ -24,15 +24,15 @@ router.post('/generate', validate(generateQuizSchema), asyncHandler(quizControll
 router.post('/attempt', validate(submitAttemptSchema), asyncHandler(quizController.submitAttempt));
 
 // GET /api/quiz/list - List user's quizzes with filters
-router.get('/list', validate(listQuizzesSchema), asyncHandler(quizController.listQuizzes));
+router.get('/list', validate(listQuizzesSchema, 'query'), asyncHandler(quizController.listQuizzes));
 
 // GET /api/quiz/:quiz_id - Get specific quiz (for review/retry)
-router.get('/:quiz_id', validate(getQuizSchema), asyncHandler(quizController.getQuiz));
+router.get('/:quiz_id', validate(getQuizSchema, 'params'), asyncHandler(quizController.getQuiz));
 
 // GET /api/quiz/attempts/:quiz_id - Get quiz attempt history
-router.get('/attempts/:quiz_id', validate(getQuizAttemptsSchema), asyncHandler(quizController.getQuizAttempts));
+router.get('/attempts/:quiz_id', validate(getQuizAttemptsSchema, 'params'), asyncHandler(quizController.getQuizAttempts));
 
 // DELETE /api/quiz/:quiz_id - Delete quiz
-router.delete('/:quiz_id', validate(deleteQuizSchema), asyncHandler(quizController.deleteQuiz));
+router.delete('/:quiz_id', validate(deleteQuizSchema, 'params'), asyncHandler(quizController.deleteQuiz));
 
 export default router;

@@ -11,6 +11,10 @@ import {
   RiBookOpenLine,
   RiSettings3Line,
   RiLogoutBoxLine,
+  RiUserLine,
+  RiMoreFill,
+  RiCheckboxCircleLine,
+  RiMedalLine,
 } from '@remixicon/react';
 import {
   Sidebar,
@@ -25,25 +29,35 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from '@/components/ui/sidebar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/lib/hooks/use-auth';
-import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useRouter } from 'next/navigation';
 
 const mainNav = [
   { name: 'Dashboard', href: '/dashboard', icon: RiHome5Line },
   { name: 'AI Tutor', href: '/dashboard/tutor', icon: RiRobot2Line },
   { name: 'Quiz', href: '/dashboard/quiz', icon: RiQuestionLine },
+  { name: 'Progress', href: '/dashboard/progress', icon: RiCheckboxCircleLine },
   { name: 'Study Planner', href: '/dashboard/planner', icon: RiCalendarLine },
+  { name: 'Leaderboard', href: '/dashboard/leaderboard', icon: RiMedalLine },
   { name: 'Analytics', href: '/dashboard/analytics', icon: RiBarChartBoxLine },
 ];
 
 const secondaryNav = [
   { name: 'Resources', href: '/dashboard/resources', icon: RiBookOpenLine },
-  { name: 'Settings', href: '/dashboard/settings', icon: RiSettings3Line },
 ];
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, logout } = useAuth();
 
   const getInitials = (name?: string) => {
@@ -54,6 +68,11 @@ export function AppSidebar() {
       .join('')
       .toUpperCase()
       .slice(0, 2);
+  };
+
+  const handleLogout = () => {
+    logout();
+    router.push('/login');
   };
 
   return (
@@ -121,23 +140,63 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <div className="flex items-center gap-2 rounded-md px-2 py-1.5 group-data-[collapsible=icon]:justify-center">
-              <Avatar className="h-8 w-8 shrink-0">
-                <AvatarFallback>{getInitials(user?.name)}</AvatarFallback>
-              </Avatar>
-              <div className="flex flex-1 flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
-                <span className="truncate text-sm font-medium">{user?.name || 'User'}</span>
-                <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => logout()}
-                className="shrink-0 group-data-[collapsible=icon]:hidden"
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton
+                  size="lg"
+                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                >
+                  <Avatar className="h-8 w-8 rounded-lg">
+                    <AvatarFallback className="rounded-lg">
+                      {getInitials(user?.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">{user?.name || 'User'}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {user?.email}
+                    </span>
+                  </div>
+                  <RiMoreFill className="ml-auto size-4" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+                side="bottom"
+                align="end"
+                sideOffset={4}
               >
-                <RiLogoutBoxLine className="h-4 w-4" />
-              </Button>
-            </div>
+                <DropdownMenuLabel className="p-0 font-normal">
+                  <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                    <Avatar className="h-8 w-8 rounded-lg">
+                      <AvatarFallback className="rounded-lg">
+                        {getInitials(user?.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">{user?.name || 'User'}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {user?.email}
+                      </span>
+                    </div>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push('/dashboard')}>
+                  <RiHome5Line className="mr-2 h-4 w-4" />
+                  Dashboard
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push('/dashboard/settings')}>
+                  <RiSettings3Line className="mr-2 h-4 w-4" />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout}>
+                  <RiLogoutBoxLine className="mr-2 h-4 w-4" />
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

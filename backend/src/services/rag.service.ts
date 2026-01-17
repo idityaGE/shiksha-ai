@@ -1,8 +1,5 @@
 import weaviate, { type WeaviateClient, ApiKey } from 'weaviate-ts-client';
-import { openai } from '@ai-sdk/openai';
-import { embed } from 'ai';
 import { logger, logRAGQuery, logRAGError, logError } from '../utils/logger';
-import { ExternalServiceError } from '../utils/apiError';
 
 /**
  * NCERT Chunk structure in Weaviate
@@ -40,19 +37,21 @@ export interface RAGContext {
 
 /**
  * RAG Service for Weaviate integration
- * Handles embedding generation and vector search
+ * Uses Weaviate's hybrid search (BM25 + vector) for fast, accurate results
  */
 export class RAGService {
   private client!: WeaviateClient;
-  private embeddingModel: any;
   private className: string;
   private isInitialized: boolean = false;
+  private hybridAlpha: number; // 0 = pure keyword, 1 = pure vector, 0.5 = balanced
 
   constructor() {
     const weaviateUrl = process.env.WEAVIATE_URL;
     const weaviateScheme = process.env.WEAVIATE_SCHEME as 'http' | 'https' || 'https';
     const weaviateApiKey = process.env.WEAVIATE_API_KEY;
     this.className = process.env.WEAVIATE_CLASS_NAME || 'NCERTChunks';
+    // Hybrid search alpha: 0 = pure BM25 keyword, 1 = pure vector, 0.5 = balanced (default)
+    this.hybridAlpha = parseFloat(process.env.WEAVIATE_HYBRID_ALPHA || '0.5');
 
     if (!weaviateUrl) {
       logger.warn('WEAVIATE_URL not configured - RAG service will be disabled');
@@ -72,11 +71,6 @@ export class RAGService {
 
     this.client = weaviate.client(clientConfig);
 
-    // Initialize embedding model
-    this.embeddingModel = openai.embedding(
-      process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small'
-    );
-
     this.isInitialized = true;
     logger.info(
       {
@@ -84,38 +78,33 @@ export class RAGService {
         scheme: weaviateScheme,
         className: this.className,
         hasApiKey: !!weaviateApiKey,
+        hybridAlpha: this.hybridAlpha,
       },
-      'RAG Service initialized'
+      'RAG Service initialized with hybrid search'
     );
   }
 
   /**
-   * Generate embedding for a text query
-   */
-  private async generateEmbedding(text: string): Promise<number[]> {
-    try {
-      const { embedding } = await embed({
-        model: this.embeddingModel,
-        value: text,
-      });
-      return embedding;
-    } catch (error) {
-      logError(error as Error, { service: 'RAG', method: 'generateEmbedding' });
-      throw new ExternalServiceError('Failed to generate embedding');
-    }
-  }
-
-  /**
-   * Search for relevant NCERT chunks using semantic search
+   * Search for relevant NCERT chunks using Weaviate's hybrid search
+   * Hybrid search combines BM25 keyword matching with vector similarity
+   * This eliminates the need for external embedding API calls
    */
   async searchRelevantContext(
     query: string,
     filters: RAGFilters = {},
     limit: number = 5
   ): Promise<RAGContext> {
-    // If RAG service not initialized, return empty context
+    // If RAG service not initialized, return empty context silently
     if (!this.isInitialized) {
-      logger.warn('RAG service not initialized - returning empty context');
+      return {
+        chunks: [],
+        contextText: '',
+        metadata: { query, resultsCount: 0, filters },
+      };
+    }
+    
+    // Skip RAG for very short queries (greetings, etc.)
+    if (query.trim().length < 10) {
       return {
         chunks: [],
         contextText: '',
@@ -124,18 +113,16 @@ export class RAGService {
     }
 
     try {
-      // 1. Generate embedding for the query
-      const queryEmbedding = await this.generateEmbedding(query);
-
-      // 2. Build Weaviate query with nearVector search
+      // Build Weaviate query with hybrid search (BM25 + vector)
+      // No external embedding API call needed - Weaviate handles vectorization internally
       let graphQuery = this.client.graphql
         .get()
         .withClassName(this.className)
         .withFields('text class board subject chapter')
-        .withNearVector({ vector: queryEmbedding })
+        .withHybrid({ query, alpha: this.hybridAlpha })
         .withLimit(limit);
 
-      // 3. Add filters if provided
+      // Add filters if provided
       const whereFilters: any[] = [];
 
       if (filters.class) {
@@ -178,15 +165,15 @@ export class RAGService {
         });
       }
 
-      // 4. Execute the query
+      // Execute the query
       const result = await graphQuery.do();
 
-      // 5. Extract chunks
+      // Extract chunks
       const chunks: NCERTChunk[] = result.data?.Get?.[this.className] || [];
 
       logRAGQuery(query, chunks.length, filters);
 
-      // 6. Format context text for LLM
+      // Format context text for LLM
       const contextText = chunks
         .map((chunk, idx) => {
           return `[NCERT Excerpt ${idx + 1}]
@@ -206,7 +193,11 @@ ${chunk.text}`;
       };
     } catch (error) {
       // Log error but don't throw - return empty context instead (fallback strategy)
-      logRAGError(query, error as Error, { filters });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn(
+        { type: 'rag_error', query, filters, error: errorMessage },
+        'RAG search failed, falling back'
+      );
       
       return {
         chunks: [],

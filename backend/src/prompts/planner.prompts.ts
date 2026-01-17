@@ -228,3 +228,277 @@ Example: "Great job completing Day ${daysCompleted}! You've covered ${Math.round
 
 Generate an encouraging message now:`;
 };
+
+// =============================================================================
+// CHAPTER-WISE PLANNING
+// =============================================================================
+
+/**
+ * Chapter information for planning
+ */
+export interface ChapterInfo {
+  id: string;
+  name: string;
+  subject: string;
+  estimated_hours: number;
+  weightage: 'low' | 'medium' | 'high';
+  order: number;
+  is_priority?: boolean;
+  progress_percent?: number; // Current progress if any
+}
+
+/**
+ * Chapter Plan Context
+ */
+export interface ChapterPlanContext {
+  studentClass: number;
+  board: string;
+  subject: string;
+  chapters: ChapterInfo[];
+  deadline: string; // ISO date string
+  dailyStudyHours: number;
+  includeRevision: boolean;
+  revisionDays: number;
+  currentDate: string;
+}
+
+/**
+ * Chapter-wise Study Plan Structure
+ */
+export interface ChapterStudyPlan {
+  title: string;
+  subject: string;
+  deadline: string;
+  total_days: number;
+  total_chapters: number;
+  daily_hours: number;
+  schedule: ChapterDaySchedule[];
+  revision_schedule?: RevisionDaySchedule[];
+}
+
+export interface ChapterDaySchedule {
+  day: number;
+  date: string;
+  chapter_id: string;
+  chapter_name: string;
+  focus_areas: string[];
+  estimated_hours: number;
+  tasks: ChapterTask[];
+  is_revision: boolean;
+}
+
+export interface ChapterTask {
+  title: string;
+  description: string;
+  duration_minutes: number;
+  type: 'read' | 'practice' | 'solve' | 'revise' | 'quiz';
+}
+
+export interface RevisionDaySchedule {
+  day: number;
+  date: string;
+  chapters_to_revise: string[]; // Chapter IDs
+  focus: string;
+  estimated_hours: number;
+}
+
+/**
+ * Calculate available days between dates
+ */
+const calculateAvailableDays = (deadline: string, currentDate: string): number => {
+  const end = new Date(deadline);
+  const start = new Date(currentDate);
+  const diffTime = end.getTime() - start.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return Math.max(diffDays, 1);
+};
+
+/**
+ * Generate chapter-wise study plan prompt
+ */
+export const getChapterPlanPrompt = (context: ChapterPlanContext): string => {
+  const availableDays = calculateAvailableDays(context.deadline, context.currentDate);
+  const studyDays = context.includeRevision ? availableDays - context.revisionDays : availableDays;
+  const totalEstimatedHours = context.chapters.reduce((sum, ch) => sum + ch.estimated_hours, 0);
+  const totalAvailableHours = studyDays * context.dailyStudyHours;
+
+  // Sort chapters: priority first, then by order
+  const sortedChapters = [...context.chapters].sort((a, b) => {
+    if (a.is_priority && !b.is_priority) return -1;
+    if (!a.is_priority && b.is_priority) return 1;
+    return a.order - b.order;
+  });
+
+  // Calculate chapters per day (rough estimate)
+  const hoursPerDay = context.dailyStudyHours;
+  
+  return `Create a chapter-wise study schedule for a Class ${context.studentClass} ${context.board} student.
+
+**Planning Parameters:**
+- Subject: ${context.subject}
+- Total Chapters: ${context.chapters.length}
+- Deadline: ${context.deadline}
+- Days Available: ${availableDays} (${studyDays} study days + ${context.revisionDays} revision days)
+- Daily Study Hours: ${context.dailyStudyHours}
+- Total Hours Needed: ~${totalEstimatedHours} hours
+- Total Hours Available: ${totalAvailableHours} hours
+- Current Date: ${context.currentDate}
+
+**Chapters to Cover (in priority order):**
+${sortedChapters.map((ch, i) => 
+  `${i + 1}. ${ch.name} (ID: ${ch.id})
+   - Estimated: ${ch.estimated_hours} hours
+   - Weightage: ${ch.weightage}
+   - Progress: ${ch.progress_percent || 0}%
+   - Priority: ${ch.is_priority ? 'HIGH' : 'Normal'}`
+).join('\n')}
+
+**Scheduling Rules:**
+1. **Priority chapters first** - Cover chapters marked as priority earlier
+2. **Respect estimated hours** - Don't cram more than ${hoursPerDay} hours per day
+3. **Logical grouping** - If a chapter takes more than one day, split it logically
+4. **High-weightage chapters** - Allocate more time to high-weightage chapters
+5. **Already started chapters** - Continue from where left off (check progress %)
+6. **Buffer time** - Leave 10-15% buffer for catching up
+
+**Task Types per Chapter:**
+- **read**: Reading and understanding concepts (40% of time)
+- **practice**: Solving examples and practice problems (30% of time)
+- **solve**: NCERT exercises and textbook questions (20% of time)
+- **quiz**: Self-assessment and quick tests (10% of time)
+
+${context.includeRevision ? `**Revision Phase (Last ${context.revisionDays} days):**
+- Quick revision of all chapters
+- Focus on formulas, key concepts, important topics
+- Previous year questions
+- Mock tests` : ''}
+
+**Output Format:**
+Return ONLY a valid JSON object with the following structure:
+
+{
+  "title": "${context.subject} Chapter Plan - ${availableDays} Days",
+  "subject": "${context.subject}",
+  "deadline": "${context.deadline}",
+  "total_days": ${availableDays},
+  "total_chapters": ${context.chapters.length},
+  "daily_hours": ${context.dailyStudyHours},
+  "schedule": [
+    {
+      "day": 1,
+      "date": "YYYY-MM-DD",
+      "chapter_id": "${sortedChapters[0]?.id || 'chapter-id'}",
+      "chapter_name": "${sortedChapters[0]?.name || 'Chapter Name'}",
+      "focus_areas": ["Specific topic 1", "Specific topic 2"],
+      "estimated_hours": ${Math.min(hoursPerDay, sortedChapters[0]?.estimated_hours || hoursPerDay)},
+      "tasks": [
+        {
+          "title": "Read Chapter Introduction",
+          "description": "Read and understand the basic concepts",
+          "duration_minutes": 45,
+          "type": "read"
+        },
+        {
+          "title": "Practice Examples",
+          "description": "Work through solved examples 1.1 to 1.5",
+          "duration_minutes": 30,
+          "type": "practice"
+        }
+      ],
+      "is_revision": false
+    }
+  ]${context.includeRevision ? `,
+  "revision_schedule": [
+    {
+      "day": ${studyDays + 1},
+      "date": "YYYY-MM-DD",
+      "chapters_to_revise": ["chapter-id-1", "chapter-id-2"],
+      "focus": "Quick revision of formulas and key concepts",
+      "estimated_hours": ${context.dailyStudyHours}
+    }
+  ]` : ''}
+}
+
+**Important:**
+- Generate dates starting from ${context.currentDate}
+- Each day should have 2-4 tasks totaling ${context.dailyStudyHours * 60} minutes
+- Cover ALL ${context.chapters.length} chapters before revision phase
+- If time is tight, combine similar chapters or reduce depth
+
+Generate the complete chapter-wise study plan now:`;
+};
+
+/**
+ * Generate prompt for rescheduling/adjusting a chapter plan
+ */
+export const getChapterPlanAdjustmentPrompt = (
+  originalPlan: ChapterStudyPlan,
+  completedChapterIds: string[],
+  missedDays: number,
+  newDeadline?: string
+): string => {
+  const remainingChapters = originalPlan.schedule.filter(
+    s => !completedChapterIds.includes(s.chapter_id) && !s.is_revision
+  );
+
+  return `Adjust this chapter-wise study plan based on progress.
+
+**Original Plan:**
+- Title: ${originalPlan.title}
+- Total Days: ${originalPlan.total_days}
+- Total Chapters: ${originalPlan.total_chapters}
+- Daily Hours: ${originalPlan.daily_hours}
+
+**Progress:**
+- Chapters Completed: ${completedChapterIds.length} / ${originalPlan.total_chapters}
+- Missed Days: ${missedDays}
+- Remaining Chapters: ${remainingChapters.length}
+
+**Completed Chapters:**
+${completedChapterIds.join(', ') || 'None'}
+
+**Remaining Chapters:**
+${remainingChapters.map(s => `- ${s.chapter_name} (${s.chapter_id})`).join('\n')}
+
+${newDeadline ? `**New Deadline:** ${newDeadline}` : `**Original Deadline:** ${originalPlan.deadline}`}
+
+**Instructions:**
+1. Keep completed chapters as-is
+2. Reschedule remaining chapters to fit available time
+3. If behind schedule, consider:
+   - Combining chapters with similar topics
+   - Reducing time on easier chapters
+   - Prioritizing high-weightage chapters
+4. Maintain revision time if possible
+5. Generate realistic daily schedules
+
+Return the adjusted plan as a complete JSON object in the same format.`;
+};
+
+/**
+ * Generate daily summary for a chapter plan
+ */
+export const getChapterDailySummaryPrompt = (
+  todaySchedule: ChapterDaySchedule,
+  yesterdayCompleted: boolean,
+  overallProgress: number
+): string => {
+  return `Generate a brief motivational daily summary.
+
+**Today's Schedule:**
+- Chapter: ${todaySchedule.chapter_name}
+- Focus Areas: ${todaySchedule.focus_areas.join(', ')}
+- Estimated Time: ${todaySchedule.estimated_hours} hours
+- Tasks: ${todaySchedule.tasks.length} tasks
+
+**Progress:**
+- Yesterday: ${yesterdayCompleted ? 'Completed!' : 'Not completed'}
+- Overall: ${overallProgress}%
+
+Generate a 2-3 sentence motivational message that:
+1. Mentions today's chapter
+2. Acknowledges yesterday's progress (or encourages if missed)
+3. Motivates to complete today's goals
+
+Keep it brief, encouraging, and student-friendly.`;
+};

@@ -12,6 +12,11 @@ import tutorRoutes from './routes/tutor.routes.ts';
 import quizRoutes from './routes/quiz.routes.ts';
 import plannerRoutes from './routes/planner.routes.ts';
 import statsRoutes from './routes/stats.routes.ts';
+import curriculumRoutes from './routes/curriculum.routes.ts';
+import progressRoutes from './routes/progress.routes.ts';
+import gamificationRoutes from './routes/gamification.routes.ts';
+import leaderboardRoutes from './routes/leaderboard.routes.ts';
+import intelligenceRoutes from './routes/intelligence.routes.ts';
 
 // Load environment variables
 const PORT = process.env.PORT || 3000;
@@ -50,7 +55,7 @@ app.get('/health', async (req: Request, res: Response) => {
   const dbHealthy = await checkDatabaseConnection();
 
   res.status(dbHealthy ? 200 : 503).json({
-    status: dbHealthy ? 'healthy' : 'unhealthy',
+    status: dbHealthy ? 'healthy' : 'unhealthy', 
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: NODE_ENV,
@@ -74,6 +79,11 @@ app.use('/api/tutor', tutorRoutes);
 app.use('/api/quiz', quizRoutes);
 app.use('/api/planner', plannerRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/curriculum', curriculumRoutes);
+app.use('/api/progress', progressRoutes);
+app.use('/api/gamification', gamificationRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/intelligence', intelligenceRoutes);
 
 // 404 handler for undefined routes
 app.use(notFoundHandler);

@@ -5,10 +5,15 @@ import { authenticate } from '../middleware/auth';
 import {
   generatePlanSchema,
   getPlanSchema,
-  updateTaskStatusSchema,
+  updateTaskStatusBodySchema,
   listPlansSchema,
   getProgressSchema,
   deletePlanSchema,
+  generateChapterPlanSchema,
+  getChapterPlanSchema,
+  updateChapterTaskBodySchema,
+  getPlansByDeadlineSchema,
+  getTodayTasksSchema,
 } from '../schemas/planner.schema';
 import * as plannerController from '../controllers/planner.controller';
 
@@ -21,18 +26,37 @@ router.use(authenticate);
 router.post('/generate', validate(generatePlanSchema), asyncHandler(plannerController.generatePlan));
 
 // GET /api/planner/plan - Get plan for specific date (or today)
-router.get('/plan', validate(getPlanSchema), asyncHandler(plannerController.getPlan));
+router.get('/plan', validate(getPlanSchema, 'query'), asyncHandler(plannerController.getPlan));
 
 // GET /api/planner/plans - List all study plans
-router.get('/plans', validate(listPlansSchema), asyncHandler(plannerController.listPlans));
+router.get('/plans', validate(listPlansSchema, 'query'), asyncHandler(plannerController.listPlans));
 
 // GET /api/planner/progress - Get study plan progress
-router.get('/progress', validate(getProgressSchema), asyncHandler(plannerController.getProgress));
+router.get('/progress', validate(getProgressSchema, 'query'), asyncHandler(plannerController.getProgress));
 
 // PATCH /api/planner/task/:task_id - Update task status
-router.patch('/task/:task_id', validate(updateTaskStatusSchema), asyncHandler(plannerController.updateTaskStatus));
+router.patch('/task/:task_id', validate(updateTaskStatusBodySchema), asyncHandler(plannerController.updateTaskStatus));
 
 // DELETE /api/planner/plan/:plan_id - Delete study plan
-router.delete('/plan/:plan_id', validate(deletePlanSchema), asyncHandler(plannerController.deletePlan));
+router.delete('/plan/:plan_id', validate(deletePlanSchema, 'params'), asyncHandler(plannerController.deletePlan));
+
+// =============================================================================
+// CHAPTER-WISE PLANNING ROUTES
+// =============================================================================
+
+// POST /api/planner/generate-chapter-plan - Generate chapter-wise study plan
+router.post('/generate-chapter-plan', validate(generateChapterPlanSchema), asyncHandler(plannerController.generateChapterPlan));
+
+// GET /api/planner/chapter-plan/:plan_id - Get chapter plan details
+router.get('/chapter-plan/:plan_id', validate(getChapterPlanSchema, 'params'), asyncHandler(plannerController.getChapterPlan));
+
+// PATCH /api/planner/chapter-task/:task_id - Update chapter task status
+router.patch('/chapter-task/:task_id', validate(updateChapterTaskBodySchema), asyncHandler(plannerController.updateChapterTask));
+
+// GET /api/planner/by-deadline - Get plans filtered by deadline
+router.get('/by-deadline', validate(getPlansByDeadlineSchema, 'query'), asyncHandler(plannerController.getPlansByDeadline));
+
+// GET /api/planner/today - Get today's tasks across all plans
+router.get('/today', validate(getTodayTasksSchema, 'query'), asyncHandler(plannerController.getTodayTasks));
 
 export default router;

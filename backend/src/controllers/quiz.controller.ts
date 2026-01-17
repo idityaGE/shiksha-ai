@@ -7,6 +7,8 @@ import { llmService } from '../services/llm.service';
 import { ragService } from '../services/rag.service';
 import { getQuizGenerationPrompt, type QuizQuestion } from '../prompts/quiz.prompts';
 import { logger } from '../utils/logger';
+import { gamificationService, XP_AWARDS } from '../services/gamification.service';
+import { iqService } from '../services/iq.service';
 import type {
   GenerateQuizInput,
   SubmitAttemptInput,
@@ -28,7 +30,7 @@ export const generateQuiz = async (req: AuthRequest, res: Response) => {
     // Get user profile for class level
     const { data: profile, error: profileError } = await supabase
       .from('user_profile')
-      .select('class_level, board')
+      .select('class, board')
       .eq('user_id', userId)
       .single();
 
@@ -41,7 +43,7 @@ export const generateQuiz = async (req: AuthRequest, res: Response) => {
       {
         query: `${input.subject} ${input.chapter} ${input.topic || ''}`,
         filters: {
-          class: profile.class_level,
+          class: profile.class,
           subject: input.subject,
           chapter: input.chapter,
         },
@@ -52,7 +54,7 @@ export const generateQuiz = async (req: AuthRequest, res: Response) => {
     const ragContext = await ragService.searchRelevantContext(
       `${input.subject} ${input.chapter} ${input.topic || ''}`,
       {
-        class: profile.class_level,
+        class: profile.class,
         subject: input.subject,
         chapter: input.chapter,
       },
@@ -64,7 +66,7 @@ export const generateQuiz = async (req: AuthRequest, res: Response) => {
     // Generate quiz questions with LLM
     const systemPrompt = 'You are an expert NCERT exam question generator for Indian school students. Generate high-quality, curriculum-aligned quiz questions.';
     const userPrompt = getQuizGenerationPrompt({
-      studentClass: profile.class_level,
+      studentClass: profile.class,
       board: profile.board,
       subject: input.subject,
       chapter: input.chapter,
@@ -234,6 +236,16 @@ export const submitAttempt = async (req: AuthRequest, res: Response) => {
     // Fire and forget - don't block response
     updateTopicsFromQuiz(userId, quiz, results).catch((err) =>
       logger.error({ error: err }, 'Failed to update topics from quiz')
+    );
+
+    // Award XP based on quiz performance (fire and forget)
+    awardQuizXP(userId, attempt.id, correctCount, input.answers.length).catch((err) =>
+      logger.error({ error: err }, 'Failed to award quiz XP')
+    );
+
+    // Update IQ/Knowledge levels based on quiz performance (fire and forget)
+    updateIQFromQuiz(userId, attempt.id, quiz, correctCount, input.answers.length, input.time_taken_seconds || 0).catch((err) =>
+      logger.error({ error: err }, 'Failed to update IQ from quiz')
     );
 
     res.json(
@@ -451,6 +463,52 @@ export const deleteQuiz = async (req: AuthRequest, res: Response) => {
 };
 
 /**
+ * Helper: Award XP based on quiz performance
+ */
+async function awardQuizXP(
+  userId: string,
+  attemptId: string,
+  correctCount: number,
+  totalQuestions: number
+): Promise<void> {
+  try {
+    const accuracy = correctCount / totalQuestions;
+
+    // Determine XP based on performance tier
+    let xpAmount: number;
+    let reason: string;
+
+    if (accuracy >= 1.0) {
+      // Perfect score
+      xpAmount = XP_AWARDS.QUIZ_ACE;
+      reason = 'Perfect quiz score (100%)';
+    } else if (accuracy >= 0.8) {
+      // Good performance
+      xpAmount = XP_AWARDS.QUIZ_GOOD;
+      reason = 'Good quiz score (80%+)';
+    } else if (accuracy >= 0.6) {
+      // Passing score
+      xpAmount = XP_AWARDS.QUIZ_PASS;
+      reason = 'Passed quiz (60%+)';
+    } else {
+      // Below passing - still get some XP for effort
+      xpAmount = Math.round(XP_AWARDS.QUIZ_PASS / 2);
+      reason = 'Completed quiz';
+    }
+
+    await gamificationService.awardXP(userId, xpAmount, 'quiz', attemptId, reason);
+
+    // Check for new badges
+    await gamificationService.checkAndAwardBadges(userId);
+
+    logger.info({ userId, attemptId, xpAmount, accuracy }, 'Quiz XP awarded');
+  } catch (error) {
+    logger.error({ error }, 'Failed to award quiz XP');
+    // Don't throw - this is best effort
+  }
+}
+
+/**
  * Helper: Update weak/strong topics based on quiz performance
  */
 async function updateTopicsFromQuiz(
@@ -499,6 +557,37 @@ async function updateTopicsFromQuiz(
     logger.info({ userId, accuracy, topic: quiz.topic }, 'Updated topics from quiz');
   } catch (error) {
     logger.error({ error }, 'Failed to update topics from quiz');
+    // Don't throw - this is best effort
+  }
+}
+
+/**
+ * Helper: Update IQ and Knowledge levels from quiz performance
+ */
+async function updateIQFromQuiz(
+  userId: string,
+  attemptId: string,
+  quiz: any,
+  correctCount: number,
+  totalQuestions: number,
+  timeTakenSeconds: number
+): Promise<void> {
+  try {
+    const accuracy = correctCount / totalQuestions;
+    const expectedTimeSeconds = totalQuestions * 60; // Assume 1 min per question
+
+    await iqService.updateFromQuiz(userId, attemptId, {
+      accuracy,
+      difficulty: quiz.difficulty || 'medium',
+      time_taken_seconds: timeTakenSeconds,
+      expected_time_seconds: expectedTimeSeconds,
+      subject: quiz.subject,
+      questions: [], // Could be populated with per-question data if available
+    });
+
+    logger.info({ userId, attemptId, accuracy, subject: quiz.subject }, 'Updated IQ from quiz');
+  } catch (error) {
+    logger.error({ error }, 'Failed to update IQ from quiz');
     // Don't throw - this is best effort
   }
 }

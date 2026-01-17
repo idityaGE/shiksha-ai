@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -13,8 +14,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { RiQuestionLine, RiLoader4Line, RiSparklingLine } from '@remixicon/react';
+import { 
+  RiQuestionLine, 
+  RiLoader4Line, 
+  RiSparklingLine, 
+  RiCheckLine, 
+  RiTimeLine,
+  RiPlayCircleLine 
+} from '@remixicon/react';
 import { toast } from 'sonner';
+import { formatDistanceToNow } from 'date-fns';
 
 const SUBJECTS = [
   'Mathematics',
@@ -29,9 +38,27 @@ const SUBJECTS = [
   'Geography',
 ];
 
+interface Quiz {
+  id: string;
+  subject: string;
+  chapter: string;
+  topic: string | null;
+  difficulty: string;
+  num_questions: number;
+  created_at: string;
+  latest_attempt?: {
+    score: number;
+    total_questions: number;
+    percentage: number;
+    completed_at: string;
+  };
+}
+
 export default function QuizPage() {
   const router = useRouter();
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [quizHistory, setQuizHistory] = useState<Quiz[]>([]);
   const [formData, setFormData] = useState({
     subject: '',
     chapter: '',
@@ -39,6 +66,33 @@ export default function QuizPage() {
     difficulty: 'medium',
     num_questions: 5,
   });
+
+  useEffect(() => {
+    fetchQuizHistory();
+  }, []);
+
+  const fetchQuizHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/quiz/list?limit=10`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setQuizHistory(data.data.quizzes || []);
+      }
+    } catch (error) {
+      console.error('Error fetching quiz history:', error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!formData.subject || !formData.chapter) {
@@ -65,6 +119,9 @@ export default function QuizPage() {
 
       const data = await response.json();
       toast.success('Quiz generated successfully!');
+      
+      // Refresh quiz history
+      await fetchQuizHistory();
       
       // Navigate to quiz attempt page
       router.push(`/dashboard/quiz/${data.data.quiz.id}`);
@@ -201,7 +258,63 @@ export default function QuizPage() {
             <CardDescription>Your quiz history</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">No quizzes yet. Generate one to get started!</p>
+            {isLoadingHistory ? (
+              <div className="flex items-center justify-center py-8">
+                <RiLoader4Line className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : quizHistory.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No quizzes yet. Generate one to get started!</p>
+            ) : (
+              <div className="space-y-3">
+                {quizHistory.map((quiz) => (
+                  <div
+                    key={quiz.id}
+                    className="group flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50 cursor-pointer"
+                    onClick={() => router.push(`/dashboard/quiz/${quiz.id}`)}
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium">{quiz.subject}</h4>
+                        <Badge variant="outline" className="capitalize text-xs">
+                          {quiz.difficulty}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {quiz.chapter}
+                        {quiz.topic && ` • ${quiz.topic}`}
+                      </p>
+                      <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <RiQuestionLine className="h-3 w-3" />
+                          {quiz.num_questions} questions
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <RiTimeLine className="h-3 w-3" />
+                          {formatDistanceToNow(new Date(quiz.created_at), { addSuffix: true })}
+                        </span>
+                      </div>
+                    </div>
+                    {quiz.latest_attempt ? (
+                      <div className="flex items-center gap-2">
+                        <div className="text-right">
+                          <div className="text-lg font-bold text-primary">
+                            {quiz.latest_attempt.percentage.toFixed(0)}%
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {quiz.latest_attempt.score}/{quiz.latest_attempt.total_questions}
+                          </p>
+                        </div>
+                        <RiCheckLine className="h-4 w-4 text-green-500" />
+                      </div>
+                    ) : (
+                      <Button size="sm" variant="ghost">
+                        <RiPlayCircleLine className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

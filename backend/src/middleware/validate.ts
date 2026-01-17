@@ -10,10 +10,13 @@ export const validate = (schema: ZodSchema, source: 'body' | 'query' | 'params' 
   return (req: Request, res: Response, next: NextFunction) => {
     try {
       const dataToValidate = req[source];
-      const validated = schema.parse(dataToValidate);
       
-      // Replace request data with validated (and transformed) data
-      req[source] = validated;
+      // Validate and parse the data
+      schema.parse(dataToValidate);
+      
+      // For body, we can reassign safely
+      // For query and params, they're readonly, so we just validate
+      // The controller can access the validated data from req[source] as-is
       
       next();
     } catch (error) {
