@@ -48,7 +48,7 @@ app.use('/api/', limiter);
 // Health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
   const dbHealthy = await checkDatabaseConnection();
-  
+
   res.status(dbHealthy ? 200 : 503).json({
     status: dbHealthy ? 'healthy' : 'unhealthy',
     timestamp: new Date().toISOString(),
@@ -64,7 +64,6 @@ app.get('/', (req: Request, res: Response) => {
     name: 'Shiksha-AI Backend API',
     version: '1.0.0',
     status: 'running',
-    documentation: '/api/docs',
   });
 });
 
