@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
@@ -8,15 +8,27 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import {
   RiBookOpenLine,
   RiCheckLine,
   RiTimeLine,
-  RiAlertLine,
-  RiStarLine,
   RiEditLine,
-  RiArrowRightLine,
   RiFilterLine,
+  RiAtomLine,
+  RiFlaskLine,
+  RiCalculatorLine,
+  RiPlantLine,
+  RiEarthLine,
+  RiTranslate2,
+  RiBookLine,
+  RiHistoryLine,
+  RiGlobalLine,
+  RiComputerLine,
+  RiSaveLine,
+  RiCloseLine,
+  RiLoader4Line,
+  RiArrowGoBackLine,
 } from '@remixicon/react';
 import { progressApi } from '@/lib/api/progress.api';
 import type {
@@ -28,6 +40,25 @@ import type {
 } from '@/lib/types/progress.types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+// Subject icon mapping
+const SUBJECT_ICONS: Record<string, React.ReactNode> = {
+  atom: <RiAtomLine className="h-5 w-5" />,
+  flask: <RiFlaskLine className="h-5 w-5" />,
+  calculator: <RiCalculatorLine className="h-5 w-5" />,
+  plant: <RiPlantLine className="h-5 w-5" />,
+  earth: <RiEarthLine className="h-5 w-5" />,
+  translate: <RiTranslate2 className="h-5 w-5" />,
+  book: <RiBookLine className="h-5 w-5" />,
+  history: <RiHistoryLine className="h-5 w-5" />,
+  global: <RiGlobalLine className="h-5 w-5" />,
+  computer: <RiComputerLine className="h-5 w-5" />,
+};
+
+// Helper function to get subject icon
+const getSubjectIcon = (iconName: string) => {
+  return SUBJECT_ICONS[iconName] || <RiBookOpenLine className="h-5 w-5" />;
+};
 
 // Status badge colors
 const STATUS_COLORS: Record<ChapterStatus, string> = {
@@ -88,37 +119,114 @@ export default function ProgressPage() {
     }
   };
 
+  // Helper to update a chapter in the curriculum state
+  const updateChapterInState = useCallback((chapterId: string, updates: Partial<ChapterWithProgress>) => {
+    setCurriculum(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        subjects: prev.subjects.map(subject => ({
+          ...subject,
+          chapters: subject.chapters.map(chapter =>
+            chapter.id === chapterId ? { ...chapter, ...updates } : chapter
+          ),
+        })),
+      };
+    });
+  }, []);
+
   const handleUpdateProgress = async (chapterId: string, status: ChapterStatus) => {
+    const progressPercent = status === 'completed' ? 100 : status === 'in_progress' ? 50 : 0;
+    
+    // Optimistic update
+    updateChapterInState(chapterId, {
+      status,
+      progress_percent: progressPercent,
+      ...(status === 'completed' ? { completed_at: new Date().toISOString() } : {}),
+      ...(status === 'in_progress' && !curriculum?.subjects.some(s => 
+        s.chapters.some(c => c.id === chapterId && c.started_at)
+      ) ? { started_at: new Date().toISOString() } : {}),
+    });
+
     try {
-      const progressPercent = status === 'completed' ? 100 : status === 'in_progress' ? 50 : 0;
       await progressApi.updateChapterProgress(chapterId, {
         status,
         progress_percent: progressPercent,
       });
       toast.success('Progress updated');
-      fetchCurriculum(); // Refresh data
     } catch (error) {
       console.error('Failed to update progress:', error);
+      // Revert on error by refetching
+      fetchCurriculum();
     }
   };
 
   const handleAddTag = async (chapterId: string, tag: SystemTag) => {
+    // Optimistic update
+    setCurriculum(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        subjects: prev.subjects.map(subject => ({
+          ...subject,
+          chapters: subject.chapters.map(chapter =>
+            chapter.id === chapterId 
+              ? { ...chapter, system_tags: [...chapter.system_tags, tag] }
+              : chapter
+          ),
+        })),
+      };
+    });
+
     try {
       await progressApi.addTag(chapterId, { tag, type: 'system' });
       toast.success(`Tag "${TAG_LABELS[tag]}" added`);
-      fetchCurriculum();
     } catch (error) {
       console.error('Failed to add tag:', error);
+      fetchCurriculum();
     }
   };
 
   const handleRemoveTag = async (chapterId: string, tag: string) => {
+    // Optimistic update
+    setCurriculum(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        subjects: prev.subjects.map(subject => ({
+          ...subject,
+          chapters: subject.chapters.map(chapter =>
+            chapter.id === chapterId 
+              ? { 
+                  ...chapter, 
+                  system_tags: chapter.system_tags.filter(t => t !== tag),
+                  custom_tags: chapter.custom_tags.filter(t => t !== tag),
+                }
+              : chapter
+          ),
+        })),
+      };
+    });
+
     try {
       await progressApi.removeTag(chapterId, tag);
       toast.success('Tag removed');
-      fetchCurriculum();
     } catch (error) {
       console.error('Failed to remove tag:', error);
+      fetchCurriculum();
+    }
+  };
+
+  const handleUpdateNotes = async (chapterId: string, notes: string) => {
+    // Optimistic update
+    updateChapterInState(chapterId, { notes: notes || null });
+
+    try {
+      await progressApi.updateChapterProgress(chapterId, { notes });
+      toast.success('Notes saved');
+    } catch (error) {
+      console.error('Failed to save notes:', error);
+      fetchCurriculum();
     }
   };
 
@@ -223,8 +331,8 @@ export default function ProgressPage() {
             <TabsList className="flex-wrap h-auto">
               <TabsTrigger value="all">All Subjects</TabsTrigger>
               {curriculum.subjects.map((subject) => (
-                <TabsTrigger key={subject.id} value={subject.id}>
-                  <span className="mr-1">{subject.icon}</span>
+                <TabsTrigger key={subject.id} value={subject.id} className="gap-1.5">
+                  {getSubjectIcon(subject.icon)}
                   {subject.name}
                 </TabsTrigger>
               ))}
@@ -256,6 +364,7 @@ export default function ProgressPage() {
                 onUpdateProgress={handleUpdateProgress}
                 onAddTag={handleAddTag}
                 onRemoveTag={handleRemoveTag}
+                onUpdateNotes={handleUpdateNotes}
               />
             ))}
           </TabsContent>
@@ -272,12 +381,14 @@ function SubjectCard({
   onUpdateProgress,
   onAddTag,
   onRemoveTag,
+  onUpdateNotes,
 }: {
   subject: SubjectWithProgress;
   filteredChapters: ChapterWithProgress[];
   onUpdateProgress: (chapterId: string, status: ChapterStatus) => void;
   onAddTag: (chapterId: string, tag: SystemTag) => void;
   onRemoveTag: (chapterId: string, tag: string) => void;
+  onUpdateNotes: (chapterId: string, notes: string) => void;
 }) {
   return (
     <Card>
@@ -285,10 +396,10 @@ function SubjectCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
-              style={{ backgroundColor: `${subject.color}20` }}
+              className="w-10 h-10 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: `${subject.color}20`, color: subject.color }}
             >
-              {subject.icon}
+              {getSubjectIcon(subject.icon)}
             </div>
             <div>
               <CardTitle className="text-lg">{subject.name}</CardTitle>
@@ -341,10 +452,10 @@ function SubjectCard({
               <ChapterItem
                 key={chapter.id}
                 chapter={chapter}
-                subjectColor={subject.color}
                 onUpdateProgress={onUpdateProgress}
                 onAddTag={onAddTag}
                 onRemoveTag={onRemoveTag}
+                onUpdateNotes={onUpdateNotes}
               />
             ))}
           </Accordion>
@@ -357,41 +468,57 @@ function SubjectCard({
 // Chapter Item Component
 function ChapterItem({
   chapter,
-  subjectColor,
   onUpdateProgress,
   onAddTag,
   onRemoveTag,
+  onUpdateNotes,
 }: {
   chapter: ChapterWithProgress;
-  subjectColor: string;
   onUpdateProgress: (chapterId: string, status: ChapterStatus) => void;
   onAddTag: (chapterId: string, tag: SystemTag) => void;
+  onUpdateNotes: (chapterId: string, notes: string) => void;
   onRemoveTag: (chapterId: string, tag: string) => void;
 }) {
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState(chapter.notes || '');
+  const [isSaving, setIsSaving] = useState(false);
+
   const availableTags: SystemTag[] = ['need_revision', 'important', 'difficult', 'easy', 'exam_important'];
   const unusedTags = availableTags.filter((tag) => !chapter.system_tags.includes(tag));
 
+  const handleSaveNotes = async () => {
+    setIsSaving(true);
+    await onUpdateNotes(chapter.id, notesValue);
+    setIsSaving(false);
+    setIsEditingNotes(false);
+  };
+
+  const handleCancelNotes = () => {
+    setNotesValue(chapter.notes || '');
+    setIsEditingNotes(false);
+  };
+
   return (
-    <AccordionItem value={chapter.id} className="border rounded-lg mb-2 px-4">
-      <AccordionTrigger className="hover:no-underline">
-        <div className="flex items-center gap-4 flex-1">
-          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-sm font-medium">
+    <AccordionItem value={chapter.id} className="border rounded-lg mb-2 overflow-hidden">
+      <AccordionTrigger className="hover:no-underline px-4">
+        <div className="flex items-center gap-4 flex-1 min-w-0">
+          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-sm font-medium shrink-0">
             {chapter.order}
           </div>
-          <div className="flex-1 text-left">
-            <div className="flex items-center gap-2">
-              <span className="font-medium">{chapter.name}</span>
-              <Badge className={cn('text-xs', STATUS_COLORS[chapter.status])}>
+          <div className="flex-1 text-left min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium truncate">{chapter.name}</span>
+              <Badge className={cn('text-xs shrink-0', STATUS_COLORS[chapter.status])}>
                 {STATUS_LABELS[chapter.status]}
               </Badge>
             </div>
-            <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
+            <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1 flex-wrap">
               <span>{chapter.topics.length} topics</span>
               <span>{chapter.estimated_hours}h estimated</span>
               <span className="capitalize">{chapter.weightage} weightage</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <div className="w-24 hidden md:block">
               <Progress value={chapter.progress_percent} className="h-2" />
             </div>
@@ -400,8 +527,8 @@ function ChapterItem({
         </div>
       </AccordionTrigger>
 
-      <AccordionContent>
-        <div className="space-y-4 pt-2">
+      <AccordionContent className="px-4">
+        <div className="space-y-4 pt-2 pb-2">
           {/* Description */}
           <p className="text-sm text-muted-foreground">{chapter.description}</p>
 
@@ -464,12 +591,59 @@ function ChapterItem({
           </div>
 
           {/* Notes */}
-          {chapter.notes && (
-            <div>
-              <h4 className="text-sm font-medium mb-1">Notes</h4>
-              <p className="text-sm text-muted-foreground bg-muted p-2 rounded">{chapter.notes}</p>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-medium">Notes</h4>
+              {!isEditingNotes && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => setIsEditingNotes(true)}
+                >
+                  <RiEditLine className="w-3 h-3 mr-1" />
+                  {chapter.notes ? 'Edit' : 'Add notes'}
+                </Button>
+              )}
             </div>
-          )}
+            {isEditingNotes ? (
+              <div className="space-y-2">
+                <Textarea
+                  value={notesValue}
+                  onChange={(e) => setNotesValue(e.target.value)}
+                  placeholder="Add your notes about this chapter..."
+                  className="min-h-[80px] text-sm"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSaveNotes}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <RiLoader4Line className="w-4 h-4 mr-1 animate-spin" />
+                    ) : (
+                      <RiSaveLine className="w-4 h-4 mr-1" />
+                    )}
+                    Save
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCancelNotes}
+                    disabled={isSaving}
+                  >
+                    <RiCloseLine className="w-4 h-4 mr-1" />
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : chapter.notes ? (
+              <p className="text-sm text-muted-foreground bg-muted p-3 rounded">{chapter.notes}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground/60 italic">No notes yet</p>
+            )}
+          </div>
 
           {/* Timestamps */}
           {(chapter.started_at || chapter.completed_at || chapter.last_studied_at) && (
@@ -517,6 +691,16 @@ function ChapterItem({
               >
                 <RiEditLine className="w-4 h-4 mr-1" />
                 Mark as In Progress
+              </Button>
+            )}
+            {chapter.status !== 'not_started' && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onUpdateProgress(chapter.id, 'not_started')}
+              >
+                <RiArrowGoBackLine className="w-4 h-4 mr-1" />
+                Mark as Unread
               </Button>
             )}
           </div>

@@ -291,6 +291,16 @@ export const getQuiz = async (req: AuthRequest, res: Response) => {
       throw new ValidationError('Access denied');
     }
 
+    // Fetch latest attempt for this quiz
+    const { data: latestAttempt } = await supabase
+      .from('quiz_attempts')
+      .select('id, score_percent, correct_answers, total_questions, time_taken_seconds, attempt_meta, created_at')
+      .eq('quiz_id', quiz_id)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     // Return questions without correct answers (for retake)
     const questions = (quiz.config.questions as QuizQuestion[]).map((q) => ({
       question: q.question,
@@ -311,6 +321,16 @@ export const getQuiz = async (req: AuthRequest, res: Response) => {
           created_at: quiz.created_at,
         },
         questions,
+        // Include latest attempt if exists
+        latest_attempt: latestAttempt ? {
+          id: latestAttempt.id,
+          score_percent: latestAttempt.score_percent,
+          correct_answers: latestAttempt.correct_answers,
+          total_questions: latestAttempt.total_questions,
+          time_taken_seconds: latestAttempt.time_taken_seconds,
+          results: (latestAttempt.attempt_meta as any)?.results || [],
+          completed_at: latestAttempt.created_at,
+        } : null,
       })
     );
   } catch (error) {
@@ -326,7 +346,15 @@ export const getQuiz = async (req: AuthRequest, res: Response) => {
  */
 export const listQuizzes = async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
-  const input = req.query as unknown as ListQuizzesInput;
+  const rawInput = req.query as unknown as ListQuizzesInput;
+  
+  // Apply defaults for pagination
+  const input = {
+    page: Number(rawInput.page) || 1,
+    limit: Number(rawInput.limit) || 10,
+    subject: rawInput.subject,
+    difficulty: rawInput.difficulty,
+  };
 
   try {
     let query = supabase
@@ -357,9 +385,49 @@ export const listQuizzes = async (req: AuthRequest, res: Response) => {
       throw new DatabaseError('Failed to list quizzes');
     }
 
+    // Fetch latest attempts for all quizzes
+    let quizzesWithAttempts = quizzes || [];
+    
+    if (quizzes && quizzes.length > 0) {
+      const quizIds = quizzes.map(q => q.id);
+      
+      // Get all attempts for these quizzes, ordered by created_at desc
+      const { data: attempts } = await supabase
+        .from('quiz_attempts')
+        .select('quiz_id, score_percent, correct_answers, total_questions, created_at')
+        .in('quiz_id', quizIds)
+        .order('created_at', { ascending: false });
+
+      // Group by quiz_id and take the first (latest) attempt for each
+      const latestAttempts = new Map<string, {
+        quiz_id: string;
+        score_percent: number;
+        correct_answers: number;
+        total_questions: number;
+        created_at: string;
+      }>();
+      
+      attempts?.forEach(attempt => {
+        if (!latestAttempts.has(attempt.quiz_id)) {
+          latestAttempts.set(attempt.quiz_id, attempt);
+        }
+      });
+
+      // Merge attempts with quizzes
+      quizzesWithAttempts = quizzes.map(quiz => ({
+        ...quiz,
+        latest_attempt: latestAttempts.has(quiz.id) ? {
+          score: latestAttempts.get(quiz.id)!.correct_answers,
+          total_questions: latestAttempts.get(quiz.id)!.total_questions,
+          percentage: latestAttempts.get(quiz.id)!.score_percent,
+          completed_at: latestAttempts.get(quiz.id)!.created_at,
+        } : null,
+      }));
+    }
+
     res.json(
       successResponse({
-        quizzes: quizzes || [],
+        quizzes: quizzesWithAttempts,
         pagination: {
           page: input.page,
           limit: input.limit,

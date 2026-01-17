@@ -141,3 +141,44 @@ export const getProgressSchema = z.object({
 });
 
 export type GetProgressInput = z.infer<typeof getProgressSchema>;
+
+// =============================================================================
+// TOPIC-WISE PLANNING SCHEMAS
+// =============================================================================
+
+/**
+ * Generate Topic-wise Study Plan Schema
+ * POST /api/planner/generate-topic-plan
+ * 
+ * Creates a detailed topic-wise plan for a single chapter
+ */
+export const generateTopicPlanSchema = z.object({
+  subject: z.string().min(1, 'Subject is required'),
+  chapter_id: z.string().min(1, 'Chapter ID is required'),
+  deadline: z.string().datetime('Invalid deadline format'),
+  daily_study_hours: z.number().min(0.5).max(8).default(2),
+  priority_topics: z.array(z.string()).optional(), // Topic names to prioritize
+  include_quiz: z.boolean().default(true), // Include quiz at the end
+});
+
+export type GenerateTopicPlanInput = z.infer<typeof generateTopicPlanSchema>;
+
+/**
+ * Get Streak Data
+ * GET /api/planner/streak
+ */
+export const getStreakSchema = z.object({
+  // No params required - uses authenticated user
+});
+
+export type GetStreakInput = z.infer<typeof getStreakSchema>;
+
+/**
+ * Get All Plans Grouped by Subject
+ * GET /api/planner/all
+ */
+export const getAllPlansSchema = z.object({
+  status: z.enum(['active', 'completed', 'overdue', 'all']).default('all'),
+});
+
+export type GetAllPlansInput = z.infer<typeof getAllPlansSchema>;

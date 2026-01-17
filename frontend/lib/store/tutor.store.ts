@@ -137,7 +137,7 @@ export const useTutorStore = create<TutorState>()(
       },
 
       sendMessage: async (question: string, subject?: string, chapter?: string) => {
-        const { activeSessionId, answerMode, messages } = get();
+        const { activeSessionId, answerMode } = get();
 
         // Add user message optimistically
         const tempUserMessageId = `temp-user-${Date.now()}`;
@@ -169,6 +169,8 @@ export const useTutorStore = create<TutorState>()(
           let sessionId = activeSessionId;
           let sessionTitle: string | undefined;
           let detected: DetectedTopic | null = null;
+          // Track accumulated content locally to avoid race conditions
+          let accumulatedContent = '';
 
           // Process SSE stream
           for await (const event of tutorApi.streamEvents(response)) {
@@ -176,14 +178,26 @@ export const useTutorStore = create<TutorState>()(
               case 'metadata': {
                 const metadata = event as TutorMetadataEvent;
                 sessionId = metadata.session_id;
-                detected = metadata.detected;
-                set({ 
+                // Detected topic now comes in 'done' event, not metadata
+                if (metadata.detected) {
+                  detected = metadata.detected;
+                  set({ detectedTopic: detected });
+                }
+                // Update activeSessionId AND fix the user message's session_id
+                set((state) => ({
                   activeSessionId: sessionId,
-                  detectedTopic: detected,
-                });
+                  // Update the temp user message with the real session_id
+                  messages: state.messages.map((m) =>
+                    m.id === tempUserMessageId && sessionId
+                      ? { ...m, session_id: sessionId }
+                      : m
+                  ),
+                }));
                 break;
               }
               case 'token':
+                // Accumulate locally AND update state
+                accumulatedContent += event.text;
                 set((state) => ({
                   streamingContent: state.streamingContent + event.text,
                 }));
@@ -191,7 +205,11 @@ export const useTutorStore = create<TutorState>()(
               case 'done': {
                 const doneEvent = event as TutorDoneEvent;
                 sessionTitle = doneEvent.session_title;
-                detected = doneEvent.detected;
+                // Get detected topic from done event
+                if (doneEvent.detected) {
+                  detected = doneEvent.detected;
+                  set({ detectedTopic: detected });
+                }
                 break;
               }
               case 'error':
@@ -199,12 +217,15 @@ export const useTutorStore = create<TutorState>()(
             }
           }
 
-          // Finalize: add assistant message
+          // Finalize: add assistant message using locally accumulated content
+          // This avoids any potential race condition with get().streamingContent
+          const finalContent = accumulatedContent || get().streamingContent;
+          
           const assistantMessage: TutorMessage = {
             id: `msg-${Date.now()}`,
             session_id: sessionId || '',
             role: 'assistant',
-            content: get().streamingContent,
+            content: finalContent,
             detected_subject: detected?.subject,
             detected_chapter: detected?.chapter,
             detected_topic: detected?.topic,

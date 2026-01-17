@@ -45,9 +45,11 @@ export function SessionItem({ session, isActive, onSelect, onDelete }: SessionIt
       )}
       onClick={onSelect}
     >
-      <div className="flex-1 min-w-0">
+      {/* Text content - takes remaining space with overflow hidden */}
+      <div className="min-w-0 flex-1 overflow-hidden">
         <p className="truncate font-medium">
-          {session.title || 'Untitled Chat'}
+          {(session.title || 'Untitled Chat').slice(0, 26)}
+          {(session.title || 'Untitled Chat').length > 26 && '...'}
         </p>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {session.detected_subject && (
@@ -57,30 +59,33 @@ export function SessionItem({ session, isActive, onSelect, onDelete }: SessionIt
         </div>
       </div>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <RiMoreLine className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-          >
-            <RiDeleteBinLine className="mr-2 h-4 w-4" />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {/* Menu button - absolutely positioned to prevent overflow */}
+      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <RiMoreLine className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
+              <RiDeleteBinLine className="mr-2 h-4 w-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   );
 }

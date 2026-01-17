@@ -53,9 +53,9 @@ export function TutorSidebar({ onSessionSelect }: TutorSidebarProps) {
   }, [sessions, search]);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
+      <div className="flex items-center justify-between p-4 border-b shrink-0">
         <h2 className="font-semibold">Chats</h2>
         <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleNewChat}>
           <RiAddLine className="h-4 w-4" />
@@ -63,7 +63,7 @@ export function TutorSidebar({ onSessionSelect }: TutorSidebarProps) {
       </div>
 
       {/* Search */}
-      <div className="p-3 border-b">
+      <div className="p-3 border-b shrink-0">
         <div className="relative">
           <RiSearchLine className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -76,7 +76,7 @@ export function TutorSidebar({ onSessionSelect }: TutorSidebarProps) {
       </div>
 
       {/* Sessions list */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-2">
           {sessionsLoading ? (
             // Loading skeleton
@@ -121,7 +121,7 @@ export function TutorSidebar({ onSessionSelect }: TutorSidebarProps) {
 
       {/* Footer with count */}
       {sessions.length > 0 && (
-        <div className="border-t p-3 text-xs text-muted-foreground text-center">
+        <div className="border-t p-3 text-xs text-muted-foreground text-center shrink-0">
           {sessions.length} {sessions.length === 1 ? 'chat' : 'chats'}
         </div>
       )}

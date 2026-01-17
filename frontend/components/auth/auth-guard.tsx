@@ -1,19 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { Spinner } from '@/components/ui/spinner';
+import { useMounted } from '@/lib/hooks/use-mounted';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, checkAuth, isLoading } = useAuth();
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
+  const hasCheckedAuth = useRef(false);
 
   useEffect(() => {
-    setMounted(true);
-    checkAuth();
-  }, [checkAuth]);
+    if (mounted && !hasCheckedAuth.current) {
+      hasCheckedAuth.current = true;
+      checkAuth();
+    }
+  }, [mounted, checkAuth]);
 
   useEffect(() => {
     if (mounted && !isLoading && !isAuthenticated) {

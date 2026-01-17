@@ -1,411 +1,522 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect, useCallback } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import {
   RiCalendarLine,
-  RiCheckLine,
   RiTimeLine,
-  RiBookOpenLine,
   RiLoader4Line,
-  RiPlayCircleLine,
-  RiSparklingLine,
+  RiAddLine,
+  RiDeleteBinLine,
+  RiAlertLine,
+  RiArrowDownSLine,
+  RiArrowUpSLine,
 } from '@remixicon/react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-interface Task {
-  id: string;
-  task_type: string;
-  subject: string;
-  chapter: string;
-  topic: string;
-  duration_min: number;
-  status: 'pending' | 'in_progress' | 'completed' | 'skipped';
-  scheduled_at: string;
-}
+// Planner components
+import {
+  StreakCounter,
+  PlannerCalendar,
+  CalendarLegend,
+  PlanForm,
+  TopicTaskRow,
+  QuizSuggestionModal,
+} from '@/components/planner';
 
-interface PlanData {
-  plan: {
-    id: string;
-    plan_date: string;
-    plan_meta: {
-      title?: string;
-      subject?: string;
-      daily_hours?: number;
-    };
-  };
-  tasks: Task[];
-}
-
-const SUBJECTS = [
-  'Mathematics',
-  'Science',
-  'Physics',
-  'Chemistry',
-  'Biology',
-  'English',
-  'Hindi',
-  'Social Science',
-  'History',
-  'Geography',
-];
+// API and types
+import { plannerApi } from '@/lib/api/planner.api';
+import type {
+  StreakData,
+  PlanWithProgress,
+  PlanTask,
+  TaskStatus,
+  UpdateTaskResponse,
+} from '@/lib/types/planner.types';
 
 export default function PlannerPage() {
+  // Loading states
   const [isLoading, setIsLoading] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [planData, setPlanData] = useState<PlanData | null>(null);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [showGenerateDialog, setShowGenerateDialog] = useState(false);
-  const [generateForm, setGenerateForm] = useState({
-    subject: '',
-    exam_date: '',
-    daily_study_hours: 2,
-  });
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
 
+  // Data states
+  const [streakData, setStreakData] = useState<StreakData | null>(null);
+  const [plansBySubject, setPlansBySubject] = useState<Record<string, PlanWithProgress[]>>({});
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [activeSubject, setActiveSubject] = useState<string>('all');
+
+  // Tasks for selected plan/date
+  const [selectedPlanTasks, setSelectedPlanTasks] = useState<PlanTask[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+
+  // UI states
+  const [showPlanForm, setShowPlanForm] = useState(false);
+  const [showQuizModal, setShowQuizModal] = useState(false);
+  const [completedChapter, setCompletedChapter] = useState<{
+    name: string;
+    id: string;
+    subject: string;
+  } | null>(null);
+
+  // Fetch initial data
   useEffect(() => {
-    fetchPlan();
-  }, [selectedDate]);
+    fetchAllData();
+  }, []);
 
-  const fetchPlan = async () => {
+  const fetchAllData = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/planner/plan?date=${selectedDate}`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-        }
-      );
+      const [streakRes, plansRes] = await Promise.all([
+        plannerApi.getStreak(),
+        plannerApi.getAllPlans(),
+      ]);
 
-      if (response.ok) {
-        const data = await response.json();
-        setPlanData(data.data);
-      } else {
-        setPlanData(null);
-      }
+      setStreakData(streakRes.streak);
+      setPlansBySubject(plansRes.plans_by_subject);
+      setSubjects(plansRes.subjects);
     } catch (error) {
-      console.error('Error fetching plan:', error);
-      setPlanData(null);
+      console.error('Failed to fetch planner data:', error);
+      toast.error('Failed to load planner data');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleGeneratePlan = async () => {
-    if (!generateForm.subject || !generateForm.exam_date) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
-    setIsGenerating(true);
-
+  // Fetch tasks when plan is selected
+  const fetchPlanTasks = useCallback(async (planId: string) => {
+    setIsLoadingTasks(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/planner/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          ...generateForm,
-          exam_date: new Date(generateForm.exam_date).toISOString(),
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error?.message || 'Failed to generate plan');
-      }
-
-      toast.success('Study plan generated successfully!');
-      setShowGenerateDialog(false);
-      fetchPlan();
-    } catch (error: any) {
-      console.error('Error generating plan:', error);
-      toast.error(error.message || 'Failed to generate study plan');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const updateTaskStatus = async (taskId: string, status: string) => {
-    // Optimistically update UI
-    if (planData) {
-      const updatedTasks = planData.tasks.map((task) =>
-        task.id === taskId ? { ...task, status: status as Task['status'] } : task
-      );
-      setPlanData({ ...planData, tasks: updatedTasks });
-    }
-
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/planner/task/${taskId}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-          body: JSON.stringify({
-            status,
-            completed_at: status === 'completed' ? new Date().toISOString() : undefined,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        // Revert on error
-        fetchPlan();
-        throw new Error('Failed to update task');
-      }
-
-      toast.success('Task updated!');
+      const response = await plannerApi.getChapterPlan(planId);
+      setSelectedPlanTasks(response.tasks);
+      setSelectedPlanId(planId);
     } catch (error) {
-      console.error('Error updating task:', error);
-      toast.error('Failed to update task');
+      console.error('Failed to fetch plan tasks:', error);
+      setSelectedPlanTasks([]);
+    } finally {
+      setIsLoadingTasks(false);
+    }
+  }, []);
+
+  // Handle task status change
+  const handleTaskStatusChange = async (taskId: string, status: TaskStatus) => {
+    // Optimistic update
+    setSelectedPlanTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId
+          ? { ...task, status, completed_at: status === 'completed' ? new Date().toISOString() : null }
+          : task
+      )
+    );
+
+    try {
+      const response: UpdateTaskResponse = await plannerApi.updateTopicTask(taskId, { status });
+
+      // Check if chapter was completed
+      if (response.chapter_completed && response.suggest_quiz) {
+        setCompletedChapter({
+          name: response.chapter_name || 'Chapter',
+          id: response.chapter_id || '',
+          subject: response.subject,
+        });
+        setShowQuizModal(true);
+        fetchAllData();
+      }
+
+      // Update streak if task completed
+      if (status === 'completed') {
+        const streakRes = await plannerApi.getStreak();
+        setStreakData(streakRes.streak);
+      }
+    } catch (error) {
+      // Revert on error
+      if (selectedPlanId) {
+        fetchPlanTasks(selectedPlanId);
+      }
+      console.error('Failed to update task:', error);
     }
   };
 
-  const completedTasks = planData?.tasks.filter((t) => t.status === 'completed').length || 0;
-  const totalTasks = planData?.tasks.length || 0;
-  const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+  // Handle plan deletion
+  const handleDeletePlan = async (planId: string) => {
+    if (!confirm('Are you sure you want to delete this plan?')) return;
 
-  const getTaskIcon = (type: string) => {
-    switch (type) {
-      case 'study':
-        return RiBookOpenLine;
-      case 'quiz':
-        return RiPlayCircleLine;
-      case 'revision':
-        return RiCheckLine;
-      default:
-        return RiTimeLine;
+    try {
+      await plannerApi.deletePlan(planId);
+      toast.success('Plan deleted');
+      fetchAllData();
+      if (selectedPlanId === planId) {
+        setSelectedPlanId(null);
+        setSelectedPlanTasks([]);
+      }
+    } catch (error) {
+      console.error('Failed to delete plan:', error);
     }
+  };
+
+  // Get filtered plans based on active subject
+  const getFilteredPlans = (): PlanWithProgress[] => {
+    if (activeSubject === 'all') {
+      return Object.values(plansBySubject).flat();
+    }
+    return plansBySubject[activeSubject] || [];
+  };
+
+  // Get task dates for calendar (scheduled tasks)
+  const getTaskDates = (): string[] => {
+    const dates = new Set<string>();
+    const allPlans = Object.values(plansBySubject).flat();
+
+    allPlans.forEach((plan) => {
+      if (plan.deadline) {
+        dates.add(plan.deadline.split('T')[0]);
+      }
+    });
+
+    return Array.from(dates);
+  };
+
+  // Calculate subject task counts
+  const getSubjectCounts = (subject: string): number => {
+    const plans = plansBySubject[subject] || [];
+    return plans.reduce((sum, plan) => sum + (plan.progress.total_tasks - plan.progress.completed_tasks), 0);
+  };
+
+  const getAllPendingCount = (): number => {
+    return Object.values(plansBySubject)
+      .flat()
+      .reduce((sum, plan) => sum + (plan.progress.total_tasks - plan.progress.completed_tasks), 0);
   };
 
   if (isLoading) {
-    return (
-      <div className="flex h-[calc(100vh-8rem)] items-center justify-center">
-        <RiLoader4Line className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PlannerSkeleton />;
   }
 
+  const filteredPlans = getFilteredPlans();
+  const hasPlans = Object.keys(plansBySubject).length > 0;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="w-full space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Study Planner</h1>
-          <p className="text-muted-foreground">Plan and track your daily study tasks</p>
+          <p className="text-sm text-muted-foreground">Plan and track your study goals</p>
         </div>
         <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-          />
-          <Dialog open={showGenerateDialog} onOpenChange={setShowGenerateDialog}>
-            <DialogTrigger asChild>
-              <Button>
-                <RiSparklingLine className="mr-2 h-4 w-4" />
-                Generate Plan
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Generate Study Plan</DialogTitle>
-                <DialogDescription>
-                  Create a personalized study plan based on your exam schedule
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="subject">Subject</Label>
-                  <Select
-                    value={generateForm.subject}
-                    onValueChange={(value) =>
-                      setGenerateForm({ ...generateForm, subject: value })
-                    }
-                  >
-                    <SelectTrigger id="subject">
-                      <SelectValue placeholder="Select subject" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SUBJECTS.map((subject) => (
-                        <SelectItem key={subject} value={subject}>
-                          {subject}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="exam_date">Exam Date</Label>
-                  <Input
-                    id="exam_date"
-                    type="date"
-                    value={generateForm.exam_date}
-                    onChange={(e) =>
-                      setGenerateForm({ ...generateForm, exam_date: e.target.value })
-                    }
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="daily_study_hours">Daily Study Hours</Label>
-                  <Select
-                    value={generateForm.daily_study_hours.toString()}
-                    onValueChange={(value) =>
-                      setGenerateForm({
-                        ...generateForm,
-                        daily_study_hours: parseFloat(value),
-                      })
-                    }
-                  >
-                    <SelectTrigger id="daily_study_hours">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6].map((hours) => (
-                        <SelectItem key={hours} value={hours.toString()}>
-                          {hours} {hours === 1 ? 'hour' : 'hours'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Button
-                  onClick={handleGeneratePlan}
-                  disabled={isGenerating}
-                  className="w-full"
-                >
-                  {isGenerating ? (
-                    <>
-                      <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <RiSparklingLine className="mr-2 h-4 w-4" />
-                      Generate Plan
-                    </>
-                  )}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          {streakData && (
+            <StreakCounter
+              currentStreak={streakData.current_streak}
+              longestStreak={streakData.longest_streak}
+            />
+          )}
+          <Button size="sm" onClick={() => setShowPlanForm(true)}>
+            <RiAddLine className="w-4 h-4 mr-1" />
+            Create Plan
+          </Button>
         </div>
       </div>
 
-      {!planData ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <RiCalendarLine className="mb-4 h-16 w-16 text-muted-foreground" />
-            <h3 className="mb-2 text-lg font-semibold">No Plan for This Day</h3>
-            <p className="mb-4 text-center text-sm text-muted-foreground">
-              Generate a study plan to get personalized daily tasks
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>{planData.plan.plan_meta.title || 'Study Plan'}</CardTitle>
-                  <CardDescription>
-                    {planData.plan.plan_meta.subject} • {planData.plan.plan_meta.daily_hours}h/day
-                  </CardDescription>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-primary">{progress.toFixed(0)}%</div>
-                  <p className="text-sm text-muted-foreground">
-                    {completedTasks}/{totalTasks} completed
-                  </p>
-                </div>
-              </div>
+      {/* Main Content - Plans Left (3/4), Calendar Right (1/4) */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Plans Section - Left 3/4 */}
+        <div className="flex-1 lg:w-3/4 space-y-4 min-w-0">
+          {!hasPlans ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-10">
+                <RiCalendarLine className="mb-3 h-12 w-12 text-muted-foreground" />
+                <h3 className="mb-1 text-base font-semibold">No Study Plans Yet</h3>
+                <p className="mb-4 text-center text-sm text-muted-foreground max-w-sm">
+                  Create a topic-wise study plan to break down chapters into daily tasks.
+                </p>
+                <Button size="sm" onClick={() => setShowPlanForm(true)}>
+                  <RiAddLine className="w-4 h-4 mr-1" />
+                  Create Your First Plan
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Tabs value={activeSubject} onValueChange={setActiveSubject}>
+              <TabsList className="h-auto flex-wrap gap-1">
+                <TabsTrigger value="all" className="flex-none">
+                  All
+                  <Badge variant="secondary" className="ml-1.5 text-xs">
+                    {getAllPendingCount()}
+                  </Badge>
+                </TabsTrigger>
+                {subjects.map((subject) => (
+                  <TabsTrigger key={subject} value={subject} className="flex-none">
+                    {subject}
+                    <Badge variant="secondary" className="ml-1.5 text-xs">
+                      {getSubjectCounts(subject)}
+                    </Badge>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+
+              <TabsContent value={activeSubject} className="mt-4 space-y-3">
+                {filteredPlans.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-6 text-center text-sm text-muted-foreground">
+                      No plans for this subject yet
+                    </CardContent>
+                  </Card>
+                ) : (
+                  filteredPlans.map((plan) => (
+                    <PlanCard
+                      key={plan.id}
+                      plan={plan}
+                      isExpanded={selectedPlanId === plan.id}
+                      tasks={selectedPlanId === plan.id ? selectedPlanTasks : []}
+                      isLoadingTasks={isLoadingTasks && selectedPlanId === plan.id}
+                      onToggle={() => {
+                        if (selectedPlanId === plan.id) {
+                          setSelectedPlanId(null);
+                          setSelectedPlanTasks([]);
+                        } else {
+                          fetchPlanTasks(plan.id);
+                        }
+                      }}
+                      onDelete={() => handleDeletePlan(plan.id)}
+                      onTaskStatusChange={handleTaskStatusChange}
+                    />
+                  ))
+                )}
+              </TabsContent>
+            </Tabs>
+          )}
+        </div>
+
+        {/* Calendar Section - Right 1/4 */}
+        <div className="lg:w-1/4 lg:min-w-[280px]">
+          <Card className="sticky top-6">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-base">Study Calendar</CardTitle>
             </CardHeader>
-            <CardContent>
-              <Progress value={progress} className="h-2" />
+            <CardContent className="px-4 pb-4 pt-0">
+              <PlannerCalendar
+                selected={selectedDate}
+                onSelect={(date) => date && setSelectedDate(date)}
+                studyDates={streakData?.study_dates || []}
+                taskDates={getTaskDates()}
+              />
+              <CalendarLegend />
             </CardContent>
           </Card>
+        </div>
+      </div>
 
-          <div className="space-y-3">
-            <h2 className="text-lg font-semibold">Today's Tasks</h2>
-            {planData.tasks.map((task) => {
-              const Icon = getTaskIcon(task.task_type);
-              return (
-                <Card
-                  key={task.id}
-                  className={cn(
-                    'transition-colors',
-                    task.status === 'completed' && 'bg-muted/50'
-                  )}
-                >
-                  <CardContent className="flex items-center gap-4 py-4">
-                    <Checkbox
-                      checked={task.status === 'completed'}
-                      onCheckedChange={(checked) =>
-                        updateTaskStatus(task.id, checked ? 'completed' : 'pending')
-                      }
-                    />
-                    <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3
-                          className={cn(
-                            'font-medium',
-                            task.status === 'completed' && 'line-through text-muted-foreground'
-                          )}
-                        >
-                          {task.topic}
-                        </h3>
-                        <Badge variant="outline" className="capitalize">
-                          {task.task_type}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {task.subject} • {task.chapter}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                      <RiTimeLine className="h-4 w-4" />
-                      {task.duration_min}m
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </>
+      {/* Dialogs */}
+      <PlanForm
+        open={showPlanForm}
+        onOpenChange={setShowPlanForm}
+        onPlanCreated={fetchAllData}
+      />
+
+      {completedChapter && (
+        <QuizSuggestionModal
+          open={showQuizModal}
+          onOpenChange={setShowQuizModal}
+          chapterName={completedChapter.name}
+          chapterId={completedChapter.id}
+          subject={completedChapter.subject}
+        />
       )}
+    </div>
+  );
+}
+
+// Plan Card Component with Collapsible
+function PlanCard({
+  plan,
+  isExpanded,
+  tasks,
+  isLoadingTasks,
+  onToggle,
+  onDelete,
+  onTaskStatusChange,
+}: {
+  plan: PlanWithProgress;
+  isExpanded: boolean;
+  tasks: PlanTask[];
+  isLoadingTasks: boolean;
+  onToggle: () => void;
+  onDelete: () => void;
+  onTaskStatusChange: (taskId: string, status: TaskStatus) => Promise<void>;
+}) {
+  const isOverdue = plan.status === 'overdue';
+  const isCompleted = plan.status === 'completed';
+  const chapterName = (plan.plan_meta as { chapter_name?: string })?.chapter_name || 'Chapter';
+  const deadlineDate = plan.deadline ? new Date(plan.deadline) : null;
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={onToggle}>
+      <Card className={cn(
+        'overflow-hidden',
+        isOverdue && 'border-red-500/50',
+        isCompleted && 'opacity-70'
+      )}>
+        {/* Header - Always visible */}
+        <div className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <CollapsibleTrigger asChild>
+              <div className="flex-1 min-w-0 cursor-pointer">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium text-sm">{chapterName}</span>
+                  {isOverdue && (
+                    <Badge variant="destructive" className="text-xs px-1.5 py-0">
+                      <RiAlertLine className="w-3 h-3 mr-0.5" />
+                      Overdue
+                    </Badge>
+                  )}
+                  {isCompleted && (
+                    <Badge className="text-xs px-1.5 py-0 bg-green-500/10 text-green-600 border-green-500/20">
+                      Done
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                  <span>{plan.subject}</span>
+                  {deadlineDate && (
+                    <>
+                      <span>•</span>
+                      <span className="flex items-center gap-0.5">
+                        <RiTimeLine className="w-3 h-3" />
+                        {deadlineDate.toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                        })}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </CollapsibleTrigger>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="text-right">
+                <div className="text-base font-semibold">{plan.progress.completion_percent}%</div>
+                <p className="text-xs text-muted-foreground">
+                  {plan.progress.completed_tasks}/{plan.progress.total_tasks}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+              >
+                <RiDeleteBinLine className="w-4 h-4" />
+              </Button>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  {isExpanded ? (
+                    <RiArrowUpSLine className="w-4 h-4" />
+                  ) : (
+                    <RiArrowDownSLine className="w-4 h-4" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <Progress value={plan.progress.completion_percent} className="h-1 mt-3" />
+        </div>
+
+        {/* Expandable Content */}
+        <CollapsibleContent>
+          <div className="px-4 pb-4 pt-0">
+            {isLoadingTasks ? (
+              <div className="flex items-center justify-center py-4">
+                <RiLoader4Line className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : tasks.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No tasks found</p>
+            ) : (
+              <div className="border rounded-lg overflow-hidden divide-y">
+                {tasks.map((task) => (
+                  <TopicTaskRow
+                    key={task.id}
+                    task={task}
+                    onStatusChange={onTaskStatusChange}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+// Loading Skeleton
+function PlannerSkeleton() {
+  return (
+    <div className="w-full space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <Skeleton className="h-7 w-40" />
+          <Skeleton className="h-4 w-56 mt-1" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-8 w-20 rounded-full" />
+          <Skeleton className="h-8 w-28" />
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Plans Section */}
+        <div className="flex-1 lg:w-3/4 space-y-4">
+          {/* Tabs */}
+          <Skeleton className="h-9 w-64" />
+
+          {/* Plan cards */}
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <div className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                  <Skeleton className="h-8 w-12" />
+                </div>
+                <Skeleton className="h-1 w-full mt-3" />
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        {/* Calendar */}
+        <div className="lg:w-1/4 lg:min-w-[280px]">
+          <Card>
+            <CardHeader className="py-3 px-4">
+              <Skeleton className="h-5 w-28" />
+            </CardHeader>
+            <CardContent className="px-4 pb-4 pt-0">
+              <Skeleton className="h-64 w-full" />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

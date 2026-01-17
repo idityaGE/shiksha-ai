@@ -14,9 +14,11 @@ import {
 import { logger } from '../utils/logger';
 import { getChapterById, getSubjectByName } from '../data/curriculum';
 import { gamificationService, XP_AWARDS } from '../services/gamification.service';
+import { plannerService } from '../services/planner.service';
 import type {
   GeneratePlanInput,
   GenerateChapterPlanInput,
+  GenerateTopicPlanInput,
   GetPlanInput,
   UpdateTaskStatusInput,
   UpdateChapterTaskInput,
@@ -24,6 +26,7 @@ import type {
   GetProgressInput,
   GetPlansByDeadlineInput,
   GetTodayTasksInput,
+  GetAllPlansInput,
 } from '../schemas/planner.schema';
 
 /**
@@ -998,5 +1001,201 @@ export const getTodayTasks = async (req: AuthRequest, res: Response) => {
     logger.error({ error, userId }, 'Failed to get today tasks');
     if (error instanceof DatabaseError) throw error;
     throw new DatabaseError('Failed to get today tasks');
+  }
+};
+
+// =============================================================================
+// TOPIC-WISE PLANNING & NEW ENDPOINTS
+// =============================================================================
+
+/**
+ * Generate a topic-wise study plan for a single chapter
+ * POST /api/planner/generate-topic-plan
+ */
+export const generateTopicPlan = async (req: AuthRequest, res: Response) => {
+  const userId = req.user!.id;
+  const input = req.body as GenerateTopicPlanInput;
+
+  try {
+    const result = await plannerService.generateTopicPlan(userId, input);
+    res.json(successResponse(result));
+  } catch (error) {
+    logger.error({ error, userId, input }, 'Topic plan generation failed');
+    if (error instanceof ValidationError || error instanceof DatabaseError) throw error;
+    throw new DatabaseError('Failed to generate topic plan');
+  }
+};
+
+/**
+ * Get study streak data
+ * GET /api/planner/streak
+ */
+export const getStreak = async (req: AuthRequest, res: Response) => {
+  const userId = req.user!.id;
+
+  try {
+    const streakData = await plannerService.calculateStreak(userId);
+    res.json(successResponse({ streak: streakData }));
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to get streak');
+    if (error instanceof DatabaseError) throw error;
+    throw new DatabaseError('Failed to get streak data');
+  }
+};
+
+/**
+ * Get all plans grouped by subject
+ * GET /api/planner/all
+ */
+export const getAllPlans = async (req: AuthRequest, res: Response) => {
+  const userId = req.user!.id;
+  const { status } = req.query as unknown as GetAllPlansInput;
+
+  try {
+    const grouped = await plannerService.getAllPlansGroupedBySubject(userId);
+
+    // Filter by status if requested
+    if (status && status !== 'all') {
+      for (const subject of Object.keys(grouped)) {
+        grouped[subject] = grouped[subject]!.filter((p) => p.status === status);
+        if (grouped[subject]!.length === 0) {
+          delete grouped[subject];
+        }
+      }
+    }
+
+    // Calculate summary
+    let totalPlans = 0;
+    let activePlans = 0;
+    let completedPlans = 0;
+    let overduePlans = 0;
+
+    for (const plans of Object.values(grouped)) {
+      totalPlans += plans.length;
+      activePlans += plans.filter((p) => p.status === 'active').length;
+      completedPlans += plans.filter((p) => p.status === 'completed').length;
+      overduePlans += plans.filter((p) => p.status === 'overdue').length;
+    }
+
+    res.json(
+      successResponse({
+        plans_by_subject: grouped,
+        subjects: Object.keys(grouped),
+        summary: {
+          total_plans: totalPlans,
+          active_plans: activePlans,
+          completed_plans: completedPlans,
+          overdue_plans: overduePlans,
+        },
+      })
+    );
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to get all plans');
+    if (error instanceof DatabaseError) throw error;
+    throw new DatabaseError('Failed to get plans');
+  }
+};
+
+/**
+ * Update chapter task status with chapter completion check
+ * PATCH /api/planner/topic-task/:task_id
+ * 
+ * Enhanced version that checks if all tasks for a chapter are complete
+ * and returns a flag for the frontend to show quiz suggestion
+ */
+export const updateTopicTask = async (req: AuthRequest, res: Response) => {
+  const userId = req.user!.id;
+  const { task_id } = req.params;
+  const input = req.body as UpdateChapterTaskInput;
+
+  logger.info({ userId, taskId: task_id, status: input.status }, 'Updating topic task');
+
+  try {
+    // Get task with plan info
+    const { data: task, error: taskError } = await supabase
+      .from('plan_tasks')
+      .select('*, study_plans!inner(id, user_id, deadline, subject, target_chapters)')
+      .eq('id', task_id)
+      .single();
+
+    if (taskError || !task) {
+      throw new NotFoundError('Task not found');
+    }
+
+    if (task.study_plans.user_id !== userId) {
+      throw new ValidationError('Access denied');
+    }
+
+    // Build update
+    const updateData: Record<string, unknown> = {
+      status: input.status,
+    };
+
+    if (input.status === 'completed') {
+      updateData.completed_at = new Date().toISOString();
+    }
+
+    if (input.actual_hours !== undefined) {
+      updateData.duration_min = Math.round(input.actual_hours * 60);
+    }
+
+    // Update task
+    const { data: updatedTask, error: updateError } = await supabase
+      .from('plan_tasks')
+      .update(updateData)
+      .eq('id', task_id)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw new DatabaseError('Failed to update task');
+    }
+
+    let chapterCompleted = false;
+    let suggestQuiz = false;
+
+    // If completed, award XP and check chapter completion
+    if (input.status === 'completed') {
+      await gamificationService.awardXP(userId, XP_AWARDS.PLAN_TASK_COMPLETE, 'plan_task', task_id as string);
+
+      // Check if all tasks for this chapter are now complete
+      if (task.chapter_id) {
+        const completion = await plannerService.checkChapterCompletion(
+          userId,
+          task.study_plans.id,
+          task.chapter_id
+        );
+
+        if (completion.isComplete) {
+          chapterCompleted = true;
+          suggestQuiz = true;
+
+          // Mark chapter as complete in progress
+          await plannerService.markChapterComplete(userId, task.chapter_id);
+
+          logger.info({ userId, chapterId: task.chapter_id }, 'Chapter completed via topic tasks');
+        }
+      }
+
+      // Check for new badges
+      await gamificationService.checkAndAwardBadges(userId);
+    }
+
+    logger.info({ taskId: task_id, status: input.status, chapterCompleted }, 'Topic task updated');
+
+    res.json(
+      successResponse({
+        task: updatedTask,
+        chapter_completed: chapterCompleted,
+        suggest_quiz: suggestQuiz,
+        chapter_id: chapterCompleted ? task.chapter_id : null,
+        chapter_name: chapterCompleted ? task.chapter : null,
+        subject: task.study_plans.subject,
+      })
+    );
+  } catch (error) {
+    logger.error({ error, userId, task_id }, 'Failed to update topic task');
+    if (error instanceof NotFoundError || error instanceof ValidationError || error instanceof DatabaseError) throw error;
+    throw new DatabaseError('Failed to update topic task');
   }
 };

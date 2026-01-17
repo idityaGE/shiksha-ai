@@ -27,7 +27,8 @@ import type {
  * GET /api/curriculum/:class
  */
 export const getCurriculum = async (req: Request, res: Response) => {
-  const { class: classNum } = req.params as unknown as GetCurriculumInput;
+  const { class: classParam } = req.params;
+  const classNum = Number(classParam);
 
   logger.info({ class: classNum }, 'Fetching curriculum');
 
@@ -72,7 +73,8 @@ export const getCurriculum = async (req: Request, res: Response) => {
  * GET /api/curriculum/:class/:subject
  */
 export const getSubjectDetails = async (req: Request, res: Response) => {
-  const { class: classNum, subject: subjectParam } = req.params as unknown as GetSubjectInput;
+  const { class: classParam, subject: subjectParam } = req.params;
+  const classNum = Number(classParam);
 
   logger.info({ class: classNum, subject: subjectParam }, 'Fetching subject details');
 
@@ -197,7 +199,8 @@ export const searchCurriculum = async (req: Request, res: Response) => {
  * GET /api/curriculum/:class/stats
  */
 export const getStats = async (req: Request, res: Response) => {
-  const { class: classNum } = req.params as unknown as GetClassStatsInput;
+  const { class: classParam } = req.params;
+  const classNum = Number(classParam);
 
   logger.info({ class: classNum }, 'Fetching class stats');
 

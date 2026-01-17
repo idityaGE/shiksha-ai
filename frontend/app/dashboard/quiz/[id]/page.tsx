@@ -1,19 +1,29 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { RiCheckLine, RiCloseLine, RiLoader4Line, RiTimeLine } from '@remixicon/react';
+import { Badge } from '@/components/ui/badge';
+import { 
+  RiCheckLine, 
+  RiCloseLine, 
+  RiLoader4Line, 
+  RiArrowLeftLine,
+  RiRefreshLine,
+  RiTrophyLine,
+  RiBookLine,
+  RiTimeLine
+} from '@remixicon/react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface Question {
   question: string;
-  options: string[];
+  options: Record<string, string>;
   difficulty?: string;
   topic?: string;
 }
@@ -28,6 +38,21 @@ interface QuizData {
     total_questions: number;
   };
   questions: Question[];
+  latest_attempt?: {
+    id: string;
+    score_percent: number;
+    correct_answers: number;
+    total_questions: number;
+    time_taken_seconds: number;
+    results: Array<{
+      question: string;
+      is_correct: boolean;
+      selected_answer: string;
+      correct_answer: string;
+      explanation?: string;
+    }>;
+    completed_at: string;
+  };
 }
 
 export default function QuizAttemptPage() {
@@ -40,15 +65,26 @@ export default function QuizAttemptPage() {
   const [quizData, setQuizData] = useState<QuizData | null>(null);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [startTime] = useState(Date.now());
+  const [startTime, setStartTime] = useState(Date.now());
   const [showResults, setShowResults] = useState(false);
-  const [results, setResults] = useState<any>(null);
+  const [results, setResults] = useState<{
+    attempt: {
+      score_percent: number;
+      correct_answers: number;
+      total_questions: number;
+      time_taken_seconds: number;
+    };
+    results: Array<{
+      question: string;
+      is_correct: boolean;
+      selected_answer: string;
+      correct_answer: string;
+      explanation?: string;
+    }>;
+  } | null>(null);
 
-  useEffect(() => {
-    fetchQuiz();
-  }, [quizId]);
-
-  const fetchQuiz = async () => {
+  const fetchQuiz = useCallback(async () => {
+    setIsLoading(true);
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/quiz/${quizId}`, {
         headers: {
@@ -60,6 +96,27 @@ export default function QuizAttemptPage() {
 
       const data = await response.json();
       setQuizData(data.data);
+      
+      // If quiz has been completed, show results directly
+      if (data.data.latest_attempt) {
+        setResults({
+          attempt: {
+            score_percent: data.data.latest_attempt.score_percent,
+            correct_answers: data.data.latest_attempt.correct_answers,
+            total_questions: data.data.latest_attempt.total_questions,
+            time_taken_seconds: data.data.latest_attempt.time_taken_seconds,
+          },
+          results: data.data.latest_attempt.results,
+        });
+        setShowResults(true);
+      } else {
+        // Reset state for fresh quiz
+        setAnswers({});
+        setCurrentQuestion(0);
+        setStartTime(Date.now());
+        setShowResults(false);
+        setResults(null);
+      }
     } catch (error) {
       console.error('Error fetching quiz:', error);
       toast.error('Failed to load quiz');
@@ -67,6 +124,19 @@ export default function QuizAttemptPage() {
     } finally {
       setIsLoading(false);
     }
+  }, [quizId, router]);
+
+  useEffect(() => {
+    fetchQuiz();
+  }, [fetchQuiz]);
+
+  const handleRetryQuiz = () => {
+    // Reset all state for a fresh attempt (don't refetch, just reset UI state)
+    setAnswers({});
+    setCurrentQuestion(0);
+    setStartTime(Date.now());
+    setShowResults(false);
+    setResults(null);
   };
 
   const handleSubmit = async () => {
@@ -121,80 +191,170 @@ export default function QuizAttemptPage() {
 
   if (!quizData) return null;
 
+  // Results view with improved UI
   if (showResults && results) {
+    const scorePercent = results.attempt.score_percent;
+    const isPassing = scorePercent >= 60;
+    const isExcellent = scorePercent >= 90;
+
     return (
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-center text-3xl">Quiz Results</CardTitle>
-            <CardDescription className="text-center">
-              {quizData.quiz.subject} - {quizData.quiz.chapter}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="text-center">
-              <div className="mb-2 text-6xl font-bold text-primary">
-                {results.attempt.score_percent.toFixed(0)}%
+      <div className="space-y-6 max-w-4xl mx-auto w-full">
+        {/* Score Card */}
+        <Card className={cn(
+          "border-2",
+          isExcellent ? "border-green-500 bg-green-500/5" : 
+          isPassing ? "border-primary bg-primary/5" : 
+          "border-orange-500 bg-orange-500/5"
+        )}>
+          <CardContent className="pt-8 pb-8">
+            <div className="text-center space-y-4">
+              {/* Trophy Icon */}
+              <div className={cn(
+                "mx-auto w-20 h-20 rounded-full flex items-center justify-center",
+                isExcellent ? "bg-green-500/20" : 
+                isPassing ? "bg-primary/20" : 
+                "bg-orange-500/20"
+              )}>
+                <RiTrophyLine className={cn(
+                  "h-10 w-10",
+                  isExcellent ? "text-green-500" : 
+                  isPassing ? "text-primary" : 
+                  "text-orange-500"
+                )} />
               </div>
-              <p className="text-lg text-muted-foreground">
-                {results.attempt.correct_answers} / {results.attempt.total_questions} correct
-              </p>
-            </div>
 
-            <div className="space-y-4">
-              {results.results.map((result: any, index: number) => (
-                <Card key={index} className={cn(result.is_correct ? 'border-green-500' : 'border-red-500')}>
-                  <CardContent className="pt-6">
-                    <div className="flex items-start gap-3">
-                      {result.is_correct ? (
-                        <RiCheckLine className="h-5 w-5 shrink-0 text-green-500" />
-                      ) : (
-                        <RiCloseLine className="h-5 w-5 shrink-0 text-red-500" />
-                      )}
-                      <div className="flex-1 space-y-2">
-                        <p className="font-medium">{result.question}</p>
-                        <div className="space-y-1 text-sm">
-                          <p>
-                            <span className="text-muted-foreground">Your answer:</span>{' '}
-                            <span className={result.is_correct ? 'text-green-600' : 'text-red-600'}>
-                              {result.selected_answer}
-                            </span>
-                          </p>
-                          {!result.is_correct && (
-                            <p>
-                              <span className="text-muted-foreground">Correct answer:</span>{' '}
-                              <span className="text-green-600">{result.correct_answer}</span>
-                            </p>
-                          )}
-                          {result.explanation && (
-                            <p className="text-muted-foreground italic">{result.explanation}</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+              {/* Score */}
+              <div>
+                <div className={cn(
+                  "text-6xl font-bold",
+                  isExcellent ? "text-green-500" : 
+                  isPassing ? "text-primary" : 
+                  "text-orange-500"
+                )}>
+                  {scorePercent.toFixed(0)}%
+                </div>
+                <p className="text-lg text-muted-foreground mt-1">
+                  {isExcellent ? "Excellent!" : isPassing ? "Good job!" : "Keep practicing!"}
+                </p>
+              </div>
 
-            <div className="flex gap-2">
-              <Button onClick={() => router.push('/dashboard/quiz')} className="flex-1">
-                Back to Quizzes
-              </Button>
-              <Button onClick={() => router.push(`/dashboard/quiz/${quizId}`)} variant="outline" className="flex-1">
-                Retry Quiz
-              </Button>
+              {/* Stats */}
+              <div className="flex justify-center gap-8 pt-4">
+                <div className="text-center">
+                  <div className="text-2xl font-semibold">
+                    {results.attempt.correct_answers}/{results.attempt.total_questions}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Correct</p>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-semibold flex items-center justify-center gap-1">
+                    <RiTimeLine className="h-5 w-5" />
+                    {Math.floor(results.attempt.time_taken_seconds / 60)}:{(results.attempt.time_taken_seconds % 60).toString().padStart(2, '0')}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Time</p>
+                </div>
+              </div>
+
+              {/* Quiz Info */}
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <Badge variant="outline">
+                  <RiBookLine className="h-3 w-3 mr-1" />
+                  {quizData.quiz.subject}
+                </Badge>
+                <Badge variant="outline" className="capitalize">
+                  {quizData.quiz.difficulty}
+                </Badge>
+              </div>
             </div>
           </CardContent>
         </Card>
+
+        {/* Question Review */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Question Review</CardTitle>
+            <CardDescription>
+              {quizData.quiz.chapter}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {results.results.map((result, index) => (
+              <div 
+                key={index} 
+                className={cn(
+                  "rounded-lg border p-4",
+                  result.is_correct 
+                    ? "border-green-500/50 bg-green-500/5" 
+                    : "border-red-500/50 bg-red-500/5"
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={cn(
+                    "shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
+                    result.is_correct 
+                      ? "bg-green-500 text-white" 
+                      : "bg-red-500 text-white"
+                  )}>
+                    {result.is_correct ? <RiCheckLine className="h-4 w-4" /> : <RiCloseLine className="h-4 w-4" />}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <p className="font-medium text-sm">Q{index + 1}. {result.question}</p>
+                    <div className="space-y-1 text-sm">
+                      <p className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Your answer:</span>
+                        <Badge variant={result.is_correct ? "default" : "destructive"} className="font-normal">
+                          {result.selected_answer}
+                        </Badge>
+                      </p>
+                      {!result.is_correct && (
+                        <p className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Correct answer:</span>
+                          <Badge variant="default" className="font-normal bg-green-600">
+                            {result.correct_answer}
+                          </Badge>
+                        </p>
+                      )}
+                      {result.explanation && (
+                        <p className="text-muted-foreground text-xs mt-2 italic border-l-2 border-muted pl-2">
+                          {result.explanation}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <Button 
+            onClick={() => router.push('/dashboard/quiz')} 
+            variant="outline"
+            className="flex-1"
+          >
+            <RiArrowLeftLine className="mr-2 h-4 w-4" />
+            Back to Quizzes
+          </Button>
+          <Button 
+            onClick={handleRetryQuiz}
+            className="flex-1"
+          >
+            <RiRefreshLine className="mr-2 h-4 w-4" />
+            Retry Quiz
+          </Button>
+        </div>
       </div>
     );
   }
 
   const progress = ((currentQuestion + 1) / quizData.questions.length) * 100;
+  const currentQ = quizData.questions[currentQuestion];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-4xl mx-auto w-full">
+      {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div>
@@ -202,38 +362,65 @@ export default function QuizAttemptPage() {
             <p className="text-muted-foreground">{quizData.quiz.chapter}</p>
           </div>
           <div className="text-right">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm font-medium">
               Question {currentQuestion + 1} of {quizData.questions.length}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {Object.keys(answers).length} answered
             </p>
           </div>
         </div>
         <Progress value={progress} className="h-2" />
       </div>
 
-      <Card>
+      {/* Question Card */}
+      <Card className="w-full">
         <CardHeader>
-          <CardTitle className="text-lg">
-            {quizData.questions[currentQuestion].question}
-          </CardTitle>
+          <div className="flex items-start justify-between gap-4">
+            <CardTitle className="text-lg leading-relaxed flex-1">
+              {currentQ.question}
+            </CardTitle>
+            {currentQ.difficulty && (
+              <Badge variant="outline" className="capitalize shrink-0">
+                {currentQ.difficulty}
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Use key prop to force re-render RadioGroup when question changes */}
           <RadioGroup
-            value={answers[currentQuestion]}
+            key={`question-${currentQuestion}`}
+            value={answers[currentQuestion] || ''}
             onValueChange={(value) =>
-              setAnswers({ ...answers, [currentQuestion]: value })
+              setAnswers((prev) => ({ ...prev, [currentQuestion]: value }))
             }
+            className="space-y-3"
           >
-            {quizData.questions[currentQuestion].options.map((option, idx) => (
-              <div key={idx} className="flex items-center space-x-2">
-                <RadioGroupItem value={['A', 'B', 'C', 'D'][idx]} id={`option-${idx}`} />
-                <Label htmlFor={`option-${idx}`} className="flex-1 cursor-pointer">
-                  {['A', 'B', 'C', 'D'][idx]}. {option}
+            {Object.entries(currentQ.options).map(([key, option]) => (
+              <div 
+                key={key} 
+                className={cn(
+                  "flex items-start space-x-3 rounded-lg border p-4 cursor-pointer transition-colors w-full",
+                  answers[currentQuestion] === key 
+                    ? "border-primary bg-primary/5" 
+                    : "hover:bg-muted/50"
+                )}
+                onClick={() => setAnswers((prev) => ({ ...prev, [currentQuestion]: key }))}
+              >
+                <RadioGroupItem value={key} id={`q${currentQuestion}-option-${key}`} className="mt-0.5 shrink-0" />
+                <Label 
+                  htmlFor={`q${currentQuestion}-option-${key}`} 
+                  className="flex-1 cursor-pointer text-sm leading-relaxed"
+                >
+                  <span className="font-semibold mr-2">{key}.</span>{option}
                 </Label>
               </div>
             ))}
           </RadioGroup>
 
-          <div className="flex justify-between pt-4">
+          {/* Navigation */}
+          <div className="flex justify-between pt-4 border-t">
             <Button
               variant="outline"
               onClick={() => setCurrentQuestion((prev) => Math.max(0, prev - 1))}
@@ -243,7 +430,10 @@ export default function QuizAttemptPage() {
             </Button>
 
             {currentQuestion === quizData.questions.length - 1 ? (
-              <Button onClick={handleSubmit} disabled={isSubmitting}>
+              <Button 
+                onClick={handleSubmit} 
+                disabled={isSubmitting || Object.keys(answers).length !== quizData.questions.length}
+              >
                 {isSubmitting ? (
                   <>
                     <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />
@@ -264,6 +454,25 @@ export default function QuizAttemptPage() {
                 Next
               </Button>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Question Navigator */}
+      <Card className="w-full">
+        <CardContent className="pt-4">
+          <div className="flex flex-wrap gap-2">
+            {quizData.questions.map((_, index) => (
+              <Button
+                key={index}
+                variant={currentQuestion === index ? "default" : answers[index] ? "secondary" : "outline"}
+                size="sm"
+                className="w-9 h-9 p-0"
+                onClick={() => setCurrentQuestion(index)}
+              >
+                {index + 1}
+              </Button>
+            ))}
           </div>
         </CardContent>
       </Card>

@@ -55,7 +55,7 @@ export const progressApi = {
    * Update chapter progress
    */
   updateChapterProgress: (chapterId: string, updates: UpdateChapterProgressInput) => {
-    return apiClient.patch<{ progress: ChapterProgress; message: string }>(
+    return apiClient.put<{ progress: ChapterProgress; message: string }>(
       `/api/progress/chapter/${chapterId}`,
       updates
     );

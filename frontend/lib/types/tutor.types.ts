@@ -73,7 +73,7 @@ export interface TutorMetadataEvent {
   is_new_session: boolean;
   is_follow_up: boolean;
   rag_results: number;
-  detected: DetectedTopic;
+  detected?: DetectedTopic; // Optional - may not be present initially
 }
 
 export interface TutorTokenEvent {

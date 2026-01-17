@@ -14,6 +14,8 @@ import {
   updateChapterTaskBodySchema,
   getPlansByDeadlineSchema,
   getTodayTasksSchema,
+  generateTopicPlanSchema,
+  getAllPlansSchema,
 } from '../schemas/planner.schema';
 import * as plannerController from '../controllers/planner.controller';
 
@@ -58,5 +60,21 @@ router.get('/by-deadline', validate(getPlansByDeadlineSchema, 'query'), asyncHan
 
 // GET /api/planner/today - Get today's tasks across all plans
 router.get('/today', validate(getTodayTasksSchema, 'query'), asyncHandler(plannerController.getTodayTasks));
+
+// =============================================================================
+// TOPIC-WISE PLANNING & NEW ROUTES
+// =============================================================================
+
+// POST /api/planner/generate-topic-plan - Generate topic-wise study plan for a chapter
+router.post('/generate-topic-plan', validate(generateTopicPlanSchema), asyncHandler(plannerController.generateTopicPlan));
+
+// GET /api/planner/streak - Get study streak data
+router.get('/streak', asyncHandler(plannerController.getStreak));
+
+// GET /api/planner/all - Get all plans grouped by subject
+router.get('/all', validate(getAllPlansSchema, 'query'), asyncHandler(plannerController.getAllPlans));
+
+// PATCH /api/planner/topic-task/:task_id - Update topic task with chapter completion check
+router.patch('/topic-task/:task_id', validate(updateChapterTaskBodySchema), asyncHandler(plannerController.updateTopicTask));
 
 export default router;

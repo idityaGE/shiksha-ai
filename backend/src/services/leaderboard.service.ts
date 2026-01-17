@@ -70,7 +70,27 @@ class LeaderboardService {
     offset: number = 0
   ): Promise<{ entries: LeaderboardEntry[]; total: number; updatedAt: string | null }> {
     try {
-      // Get stats with user profile info
+      // First, get user profiles who are visible on leaderboard for this class
+      const { data: profiles, error: profileError } = await supabase
+        .from('user_profile')
+        .select('user_id, display_name')
+        .eq('class', classNum)
+        .eq('show_on_leaderboard', true);
+
+      if (profileError) {
+        logger.error({ error: profileError, classNum }, 'Failed to fetch profiles for leaderboard');
+        return { entries: [], total: 0, updatedAt: null };
+      }
+
+      if (!profiles || profiles.length === 0) {
+        return { entries: [], total: 0, updatedAt: null };
+      }
+
+      // Create a map of user_id to display_name
+      const profileMap = new Map(profiles.map(p => [p.user_id, p.display_name || 'Anonymous']));
+      const visibleUserIds = Array.from(profileMap.keys());
+
+      // Get stats for visible users
       const { data, error, count } = await supabase
         .from('user_class_stats')
         .select(
@@ -82,28 +102,24 @@ class LeaderboardService {
           total_badges,
           total_xp,
           rank_in_class,
-          rank_updated_at,
-          user_profile!inner (
-            display_name,
-            show_on_leaderboard
-          )
+          rank_updated_at
         `,
           { count: 'exact' }
         )
         .eq('class', classNum)
-        .eq('user_profile.show_on_leaderboard', true)
+        .in('user_id', visibleUserIds)
         .order('rank_in_class', { ascending: true, nullsFirst: false })
         .range(offset, offset + limit - 1);
 
       if (error) {
-        logger.error({ error, classNum }, 'Failed to fetch leaderboard');
+        logger.error({ error, classNum }, 'Failed to fetch leaderboard stats');
         return { entries: [], total: 0, updatedAt: null };
       }
 
       const entries: LeaderboardEntry[] = (data || []).map((row: any, index: number) => ({
         rank: row.rank_in_class || offset + index + 1,
         user_id: row.user_id,
-        display_name: row.user_profile?.display_name || 'Anonymous',
+        display_name: profileMap.get(row.user_id) || 'Anonymous',
         score: this.calculateCombinedScore(row),
         progress_percent: row.overall_progress_percent || 0,
         quiz_avg: Math.round(row.average_quiz_score || 0),

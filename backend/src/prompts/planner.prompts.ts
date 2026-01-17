@@ -502,3 +502,214 @@ Generate a 2-3 sentence motivational message that:
 
 Keep it brief, encouraging, and student-friendly.`;
 };
+
+// =============================================================================
+// TOPIC-WISE PLANNING
+// =============================================================================
+
+/**
+ * Topic information for planning
+ */
+export interface TopicInfo {
+  name: string;
+  order: number;
+  is_priority?: boolean;
+}
+
+/**
+ * Chapter details for topic planning
+ */
+export interface ChapterDetails {
+  id: string;
+  name: string;
+  description: string;
+  topics: TopicInfo[];
+  estimated_hours: number;
+  weightage: 'low' | 'medium' | 'high';
+  progress_percent?: number;
+}
+
+/**
+ * Topic Plan Context
+ */
+export interface TopicPlanContext {
+  studentClass: number;
+  board: string;
+  subject: string;
+  chapter: ChapterDetails;
+  deadline: string;
+  dailyStudyHours: number;
+  includeQuiz: boolean;
+  currentDate: string;
+}
+
+/**
+ * Topic-wise Study Plan Structure
+ */
+export interface TopicStudyPlan {
+  title: string;
+  subject: string;
+  chapter_id: string;
+  chapter_name: string;
+  deadline: string;
+  total_days: number;
+  total_topics: number;
+  daily_hours: number;
+  topics: TopicSchedule[];
+  quiz_day?: number;
+}
+
+export interface TopicSchedule {
+  day: number;
+  date: string;
+  topic_name: string;
+  topic_order: number;
+  priority: 'high' | 'medium' | 'low';
+  estimated_minutes: number;
+  learning_objectives: string[];
+  tasks: TopicTask[];
+}
+
+export interface TopicTask {
+  title: string;
+  description: string;
+  duration_minutes: number;
+  type: 'read' | 'understand' | 'practice' | 'solve' | 'memorize';
+}
+
+/**
+ * Calculate available days between dates
+ */
+const calculateTopicPlanDays = (deadline: string, currentDate: string): number => {
+  const end = new Date(deadline);
+  const start = new Date(currentDate);
+  const diffTime = end.getTime() - start.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return Math.max(diffDays, 1);
+};
+
+/**
+ * Generate topic-wise study plan prompt
+ */
+export const getTopicPlanPrompt = (context: TopicPlanContext): string => {
+  const availableDays = calculateTopicPlanDays(context.deadline, context.currentDate);
+  const totalMinutesPerDay = context.dailyStudyHours * 60;
+  
+  // Calculate minutes per topic (rough estimate)
+  const totalTopics = context.chapter.topics.length;
+  const estimatedMinutesPerTopic = Math.floor((context.chapter.estimated_hours * 60) / totalTopics);
+
+  // Sort topics: priority first, then by order
+  const sortedTopics = [...context.chapter.topics].sort((a, b) => {
+    if (a.is_priority && !b.is_priority) return -1;
+    if (!a.is_priority && b.is_priority) return 1;
+    return a.order - b.order;
+  });
+
+  return `Create a topic-wise study schedule for a Class ${context.studentClass} ${context.board} student.
+
+**Planning Parameters:**
+- Subject: ${context.subject}
+- Chapter: ${context.chapter.name} (ID: ${context.chapter.id})
+- Chapter Description: ${context.chapter.description}
+- Total Topics: ${totalTopics}
+- Deadline: ${context.deadline}
+- Days Available: ${availableDays}
+- Daily Study Hours: ${context.dailyStudyHours} (${totalMinutesPerDay} minutes)
+- Chapter Estimated Hours: ${context.chapter.estimated_hours}
+- Chapter Weightage: ${context.chapter.weightage}
+- Current Progress: ${context.chapter.progress_percent || 0}%
+- Current Date: ${context.currentDate}
+- Include Quiz: ${context.includeQuiz}
+
+**Topics to Cover (in order):**
+${sortedTopics.map((t, i) => 
+  `${i + 1}. ${t.name}
+   - Order: ${t.order}
+   - Priority: ${t.is_priority ? 'HIGH' : 'Normal'}
+   - Estimated: ~${estimatedMinutesPerTopic} minutes`
+).join('\n')}
+
+**Scheduling Rules:**
+1. **Priority topics first** - Cover priority topics earlier in the schedule
+2. **Logical flow** - Follow the natural order of topics when possible
+3. **Time limits** - Each day should have max ${totalMinutesPerDay} minutes of study
+4. **Multiple topics per day** - If time allows, cover 2-3 related topics together
+5. **High-weightage chapter** - This is a ${context.chapter.weightage}-weightage chapter, allocate time accordingly
+6. **Balanced tasks** - Each topic should have reading, understanding, and practice tasks
+
+**Priority Levels for Topics:**
+- **high**: Complex/important topics, need more time (${Math.round(estimatedMinutesPerTopic * 1.3)} min)
+- **medium**: Standard topics (${estimatedMinutesPerTopic} min)
+- **low**: Simpler/introductory topics (${Math.round(estimatedMinutesPerTopic * 0.7)} min)
+
+**Task Types per Topic:**
+- **read**: Initial reading of the topic (20% of time)
+- **understand**: Deep understanding, diagrams, notes (30% of time)
+- **practice**: Worked examples, NCERT solved (25% of time)
+- **solve**: Exercise problems (20% of time)
+- **memorize**: Formulas, definitions (5% of time)
+
+${context.includeQuiz ? `**Quiz:**
+- Add a quiz task on the final day after all topics
+- Quiz should cover all topics in the chapter
+- Quiz day number should be ${availableDays}` : ''}
+
+**Output Format:**
+Return ONLY a valid JSON object:
+
+{
+  "title": "${context.chapter.name} - Topic-wise Study Plan",
+  "subject": "${context.subject}",
+  "chapter_id": "${context.chapter.id}",
+  "chapter_name": "${context.chapter.name}",
+  "deadline": "${context.deadline}",
+  "total_days": ${availableDays},
+  "total_topics": ${totalTopics},
+  "daily_hours": ${context.dailyStudyHours},
+  "topics": [
+    {
+      "day": 1,
+      "date": "YYYY-MM-DD",
+      "topic_name": "${sortedTopics[0]?.name || 'Topic Name'}",
+      "topic_order": ${sortedTopics[0]?.order || 1},
+      "priority": "high",
+      "estimated_minutes": ${estimatedMinutesPerTopic},
+      "learning_objectives": [
+        "Understand the concept of...",
+        "Learn to apply..."
+      ],
+      "tasks": [
+        {
+          "title": "Read Topic Introduction",
+          "description": "Read NCERT section on this topic",
+          "duration_minutes": 15,
+          "type": "read"
+        },
+        {
+          "title": "Understand Key Concepts",
+          "description": "Make notes on important points and diagrams",
+          "duration_minutes": 20,
+          "type": "understand"
+        },
+        {
+          "title": "Practice Examples",
+          "description": "Work through solved examples",
+          "duration_minutes": 15,
+          "type": "practice"
+        }
+      ]
+    }
+  ]${context.includeQuiz ? `,
+  "quiz_day": ${availableDays}` : ''}
+}
+
+**Important:**
+- Generate dates starting from ${context.currentDate}
+- Cover ALL ${totalTopics} topics
+- Each topic should have 3-5 tasks
+- Total minutes per day should not exceed ${totalMinutesPerDay}
+- If a topic is complex, it can span multiple days
+
+Generate the complete topic-wise study plan now:`;
+};

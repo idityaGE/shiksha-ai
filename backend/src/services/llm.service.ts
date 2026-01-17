@@ -1,6 +1,5 @@
 import { openai } from '@ai-sdk/openai';
 import { streamText, generateText } from 'ai';
-import { z } from 'zod';
 import { logger, logAIRequest, logAIResponse, logStreamStart, logStreamEnd, logError } from '../utils/logger';
 import { ExternalServiceError } from '../utils/apiError';
 import type { TutorPromptContext } from '../prompts';
@@ -245,76 +244,31 @@ export class LLMService {
   }
 
   /**
-   * Stream a tutor response with IQ evaluation tool
-   * The AI can call the evaluation tool to assess the user's cognitive level
+   * Stream a tutor response for first question
+   * IQ evaluation is handled separately to not interfere with streaming
    */
   async streamTutorWithEvaluation(
     context: TutorPromptContext,
     userId: string,
     sessionId: string
   ) {
-    const baseSystemPrompt = getTutorSystemPrompt(context);
-    // Combine base tutor prompt with evaluation instructions
-    const systemPrompt = `${baseSystemPrompt}\n\n${TUTOR_EVALUATION_SYSTEM_PROMPT}`;
+    const systemPrompt = getTutorSystemPrompt(context);
     const modelName = process.env.OPENAI_MODEL_TUTOR || 'gpt-4o';
 
     logAIRequest(modelName, systemPrompt.length, userId, {
       answerMode: context.answerMode,
       subject: context.subject,
       class: context.studentClass,
-      withEvaluation: true,
     });
 
-    logStreamStart(modelName, userId, { answerMode: context.answerMode, withEvaluation: true });
+    logStreamStart(modelName, userId, { answerMode: context.answerMode });
     const startTime = Date.now();
 
     try {
-      // Define evaluation tool schema
-      const evaluationToolSchema = z.object({
-        bloom_level: z.enum(['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'])
-          .describe("The Bloom's taxonomy level of the question"),
-        question_complexity: z.number().int().min(1).max(10)
-          .describe('Complexity score: 1-3 simple, 4-6 moderate, 7-10 complex'),
-        demonstrates_understanding: z.boolean()
-          .describe('Whether the question shows prior understanding of the topic'),
-        reasoning_quality: z.number().int().min(1).max(10)
-          .describe('Quality of reasoning/thinking shown in the question'),
-        subject: z.string().optional()
-          .describe('The academic subject (e.g., Physics, Mathematics, Chemistry)'),
-        topic: z.string().optional()
-          .describe('The specific topic within the subject'),
-        chapter: z.string().optional()
-          .describe('The chapter or unit if identifiable'),
-      });
-
-      type EvaluationParams = z.infer<typeof evaluationToolSchema>;
-
       const result = await streamText({
         model: this.tutorModel,
         system: systemPrompt,
-        messages: context.conversationHistory
-          ? this.parseConversationHistory(context.conversationHistory)
-          : [{ role: 'user', content: context.question }],
-        tools: {
-          evaluate_user_understanding: {
-            description: `Evaluate the student's question to assess their cognitive level and understanding. 
-Call this tool for substantive academic questions to track the student's intellectual development.
-Do NOT call for greetings, clarifications, or off-topic questions.`,
-            inputSchema: evaluationToolSchema,
-            execute: async (params: EvaluationParams) => {
-              // This gets called when the AI decides to evaluate
-              logger.info({ userId, sessionId, evaluation: params }, 'AI called evaluation tool');
-              
-              // Fire and forget - update IQ in background
-              iqService.updateFromTutor(userId, sessionId, params as TutorEvaluation).catch((err) => {
-                logger.error({ error: err }, 'Failed to update IQ from tutor evaluation');
-              });
-
-              // Return confirmation (this won't be shown to user)
-              return { evaluated: true, bloom_level: params.bloom_level };
-            },
-          },
-        },
+        messages: [{ role: 'user', content: context.question }],
         temperature: 0.7,
         maxRetries: 2,
       });
@@ -325,14 +279,12 @@ Do NOT call for greetings, clarifications, or off-topic questions.`,
           const duration = Date.now() - startTime;
           logStreamEnd(modelName, duration, usage.totalTokens, userId, {
             answerMode: context.answerMode,
-            withEvaluation: true,
           });
         });
       }
 
       return {
         textStream: result.textStream,
-        toolCalls: result.toolCalls,
       };
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -344,6 +296,57 @@ Do NOT call for greetings, clarifications, or off-topic questions.`,
         context: context.answerMode,
       });
       throw new ExternalServiceError('AI service unavailable. Please try again in a moment.');
+    }
+  }
+
+  /**
+   * Evaluate a user's question for IQ tracking
+   * Called separately from streaming to not interfere with response
+   */
+  async evaluateQuestionForIQ(
+    question: string,
+    subject: string | null,
+    userId: string,
+    sessionId: string
+  ): Promise<void> {
+    try {
+      const evaluationPrompt = `${TUTOR_EVALUATION_SYSTEM_PROMPT}
+
+Analyze this student question and provide your evaluation as JSON:
+
+Question: "${question}"
+${subject ? `Subject context: ${subject}` : ''}
+
+Respond with ONLY a JSON object (no markdown, no explanation):
+{
+  "bloom_level": "remember|understand|apply|analyze|evaluate|create",
+  "question_complexity": <number 1-10>,
+  "demonstrates_understanding": <true or false>,
+  "reasoning_quality": <number 1-10>,
+  "subject": "<detected subject or null>",
+  "topic": "<detected topic or null>",
+  "chapter": "<detected chapter or null>"
+}`;
+
+      const result = await generateText({
+        model: this.utilityModel,
+        messages: [{ role: 'user', content: evaluationPrompt }],
+        temperature: 0.3,
+        maxRetries: 1,
+      });
+
+      // Parse the evaluation
+      const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const evaluation = JSON.parse(jsonMatch[0]) as TutorEvaluation;
+        
+        // Update IQ in background
+        await iqService.updateFromTutor(userId, sessionId, evaluation);
+        logger.info({ userId, sessionId, bloomLevel: evaluation.bloom_level }, 'IQ evaluation completed');
+      }
+    } catch (error) {
+      // Don't fail the main request if evaluation fails
+      logger.warn({ error, question }, 'IQ evaluation failed');
     }
   }
 

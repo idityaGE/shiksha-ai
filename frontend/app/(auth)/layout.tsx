@@ -68,7 +68,6 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         <div className="text-sm text-muted-foreground">
-          <p>Powered by OpenAI GPT-4 • NCERT Curriculum</p>
         </div>
       </div>
 

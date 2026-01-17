@@ -155,31 +155,32 @@ export const askQuestion = async (req: AuthRequest, res: Response) => {
       answerMode: answer_mode,
     };
 
-    // 6. Setup SSE headers
+    // 6. Setup SSE headers - IMPORTANT: These headers disable buffering
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+    
+    // Disable Nagle's algorithm for immediate packet sending
+    if (res.socket) {
+      res.socket.setNoDelay(true);
+    }
+    
+    // Flush headers immediately to establish SSE connection
+    res.flushHeaders();
 
-    // 7. Wait for detection to complete before sending metadata
-    const detection = await detectionPromise;
-
-    // Send initial metadata with detected topic
+    // 7. Send initial metadata immediately (don't wait for detection)
+    // Detection will be included in 'done' event
     res.write(`data: ${JSON.stringify({
       type: 'metadata',
       session_id: sessionId,
       is_new_session: isNewSession,
       is_follow_up: isFollowUp,
       rag_results: ragContext.chunks.length,
-      detected: {
-        subject: detection.subject,
-        chapter: detection.chapter,
-        topic: detection.topic,
-        confidence: detection.confidence,
-      },
     })}\n\n`);
 
-    // 8. Stream AI response - use different models based on follow-up status
+    // 8. Start streaming AI response IMMEDIATELY
+    // Use different models based on follow-up status
     let textStream;
     
     if (isFollowUp) {
@@ -200,15 +201,31 @@ export const askQuestion = async (req: AuthRequest, res: Response) => {
       textStream = result.textStream;
     }
 
-    // 9. Stream tokens
+    // 9. Stream tokens - write each chunk immediately
     let fullResponse = '';
     for await (const chunk of textStream) {
       fullResponse += chunk;
       res.write(`data: ${JSON.stringify({ type: 'token', text: chunk })}\n\n`);
     }
+    
+    // 10. Wait for detection to complete (it's been running in parallel)
+    const detection = await detectionPromise;
 
-    // 10. Save messages to database
-    const userMessagePromise = supabase
+    // 10.5 Evaluate question for IQ tracking (fire and forget, only for first question)
+    if (!isFollowUp) {
+      llmService.evaluateQuestionForIQ(
+        question,
+        detection?.subject || subject || null,
+        userId,
+        sessionId as string
+      ).catch((err) => {
+        logWarning('IQ evaluation failed', { error: (err as Error).message });
+      });
+    }
+
+    // 11. Save messages to database SEQUENTIALLY to ensure proper ordering
+    // User message first
+    const { data: userMessage, error: userMsgError } = await supabase
       .from('tutor_messages')
       .insert({
         session_id: sessionId,
@@ -224,7 +241,12 @@ export const askQuestion = async (req: AuthRequest, res: Response) => {
       .select()
       .single();
 
-    const assistantMessagePromise = supabase
+    if (userMsgError) {
+      logger.error({ error: userMsgError }, 'Failed to save user message');
+    }
+
+    // Assistant message second (ensures created_at is after user message)
+    const { data: assistantMessage, error: assistantMsgError } = await supabase
       .from('tutor_messages')
       .insert({
         session_id: sessionId,
@@ -236,9 +258,11 @@ export const askQuestion = async (req: AuthRequest, res: Response) => {
       .select()
       .single();
 
-    await Promise.all([userMessagePromise, assistantMessagePromise]);
+    if (assistantMsgError) {
+      logger.error({ error: assistantMsgError }, 'Failed to save assistant message');
+    }
 
-    // 11. Generate session title if this is the first message
+    // 12. Generate session title if this is the first message
     let sessionTitle: string | undefined;
     if (isNewSession || existingMessageCount === 0) {
       try {
@@ -256,7 +280,7 @@ export const askQuestion = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    // 12. Send completion event
+    // 13. Send completion event with detected topic
     res.write(`data: ${JSON.stringify({
       type: 'done',
       session_id: sessionId,

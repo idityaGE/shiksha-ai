@@ -67,14 +67,21 @@ class ApiClient {
     return this.request<T>(endpoint, { method: 'GET' });
   }
 
-  post<T>(endpoint: string, body?: any) {
+  post<T>(endpoint: string, body?: unknown) {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: JSON.stringify(body),
     });
   }
 
-  patch<T>(endpoint: string, body?: any) {
+  put<T>(endpoint: string, body?: unknown) {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  patch<T>(endpoint: string, body?: unknown) {
     return this.request<T>(endpoint, {
       method: 'PATCH',
       body: JSON.stringify(body),
