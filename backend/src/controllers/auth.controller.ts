@@ -44,8 +44,10 @@ export const signup = async (req: AuthRequest, res: Response) => {
       class: data.class,
       board: data.board,
       subjects: data.subjects,
-      target_exams: data.target_exams,
-      daily_study_hours: data.daily_study_hours,
+      weak_topics: [],
+      strong_topics: [],
+      target_exams: data.target_exams || [],
+      daily_study_hours: data.daily_study_hours || 1,
     });
 
   if (profileError) {
@@ -62,6 +64,16 @@ export const signup = async (req: AuthRequest, res: Response) => {
           id: authData.user.id,
           email: authData.user.email,
           name: data.name,
+        },
+        profile: {
+          user_id: authData.user.id,
+          class: data.class,
+          board: data.board,
+          subjects: data.subjects,
+          weak_topics: [],
+          strong_topics: [],
+          target_exams: data.target_exams || [],
+          daily_study_hours: data.daily_study_hours || 1,
         },
         session: authData.session,
       },
