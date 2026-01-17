@@ -75,7 +75,7 @@ export const generatePlan = async (req: AuthRequest, res: Response) => {
       currentDate: new Date().toISOString(),
     });
 
-    logger.info({ operation: 'plan-generation', promptLength: userPrompt.length }, 'Generating plan with AI');
+    logger.info({ operation: 'plan-generation', promptLength: userPrompt.length }, 'Generating plan with AI (using planner model)');
 
     // Generate plan as JSON
     const planStructure = await llmService.generateJSON<StudyPlanStructure>(
@@ -84,13 +84,27 @@ export const generatePlan = async (req: AuthRequest, res: Response) => {
       {
         temperature: 0.7,
         maxTokens: 4000,
+        usePlannerModel: true, // Use gpt-5/gpt-4o for better quality plans
       }
     );
 
     logger.info({ phases: planStructure.phases.length, totalDays: planStructure.total_days }, 'Study plan generated');
 
-    // Calculate plan date (today)
-    const planDate = new Date().toISOString().split('T')[0];
+    // Use exam_date as plan_date to avoid collision with other plans created today
+    const planDate = input.exam_date.split('T')[0];
+
+    // Check if a plan already exists for this user + plan_date, delete it if so (replace mode)
+    const { data: existingPlan } = await supabase
+      .from('study_plans')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('plan_date', planDate)
+      .single();
+
+    if (existingPlan) {
+      logger.info({ existingPlanId: existingPlan.id }, 'Deleting existing plan for same date (replace mode)');
+      await supabase.from('study_plans').delete().eq('id', existingPlan.id);
+    }
 
     // Save study plan to database
     const { data: studyPlan, error: planError } = await supabase
@@ -556,7 +570,7 @@ export const generateChapterPlan = async (req: AuthRequest, res: Response) => {
       currentDate: new Date().toISOString(),
     });
 
-    logger.info({ promptLength: userPrompt.length }, 'Generating chapter plan with AI');
+    logger.info({ promptLength: userPrompt.length }, 'Generating chapter plan with AI (using planner model)');
 
     const planStructure = await llmService.generateJSON<ChapterStudyPlan>(
       systemPrompt,
@@ -564,19 +578,36 @@ export const generateChapterPlan = async (req: AuthRequest, res: Response) => {
       {
         temperature: 0.7,
         maxTokens: 6000,
+        usePlannerModel: true, // Use gpt-5/gpt-4o for better quality plans
       }
     );
 
     logger.info({ totalDays: planStructure.total_days, scheduleItems: planStructure.schedule?.length }, 'Chapter plan generated');
+
+    // Use deadline as plan_date to avoid collision with other plans created today
+    const planDate = input.deadline.split('T')[0];
+
+    // Check if a plan already exists for this user + plan_date, delete it if so (replace mode)
+    const { data: existingPlan } = await supabase
+      .from('study_plans')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('plan_date', planDate)
+      .single();
+
+    if (existingPlan) {
+      logger.info({ existingPlanId: existingPlan.id }, 'Deleting existing plan for same date (replace mode)');
+      await supabase.from('study_plans').delete().eq('id', existingPlan.id);
+    }
 
     // Save study plan
     const { data: studyPlan, error: planError } = await supabase
       .from('study_plans')
       .insert({
         user_id: userId,
-        plan_date: new Date().toISOString().split('T')[0],
+        plan_date: planDate,
         subject: input.subject,
-        deadline: input.deadline.split('T')[0],
+        deadline: planDate,
         target_chapters: input.chapter_ids,
         generated_by: 'system',
         plan_meta: {

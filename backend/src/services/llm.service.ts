@@ -14,16 +14,19 @@ import { iqService, type TutorEvaluation } from './iq.service';
 export class LLMService {
   private tutorModel;
   private utilityModel;
+  private plannerModel;
 
   constructor() {
     // Initialize models from environment
     const tutorModelName = process.env.OPENAI_MODEL_TUTOR || 'gpt-4o';
     const utilityModelName = process.env.OPENAI_MODEL_UTILITY || 'gpt-4o-mini';
+    const plannerModelName = process.env.OPENAI_MODEL_PLANNER || 'gpt-4o';
 
     this.tutorModel = openai(tutorModelName);
     this.utilityModel = openai(utilityModelName);
+    this.plannerModel = openai(plannerModelName);
 
-    logger.info({ tutorModel: tutorModelName, utilityModel: utilityModelName }, 'LLM Service initialized');
+    logger.info({ tutorModel: tutorModelName, utilityModel: utilityModelName, plannerModel: plannerModelName }, 'LLM Service initialized');
   }
 
   /**
@@ -134,6 +137,56 @@ export class LLMService {
   }
 
   /**
+   * Generate completion using the dedicated planner model (gpt-4o/gpt-5)
+   * Used for complex tasks like study plan generation that need better reasoning
+   */
+  async generatePlannerCompletion(
+    systemPrompt: string,
+    userPrompt: string,
+    options: {
+      temperature?: number;
+      maxTokens?: number;
+      userId?: string;
+    } = {}
+  ): Promise<string> {
+    const {
+      temperature = 0.7,
+      maxTokens = 4000,
+      userId,
+    } = options;
+
+    const modelName = process.env.OPENAI_MODEL_PLANNER || 'gpt-4o';
+
+    logAIRequest(modelName, systemPrompt.length, userId, { task: 'planner' });
+    const startTime = Date.now();
+
+    try {
+      const result = await generateText({
+        model: this.plannerModel,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+        temperature,
+        maxRetries: 2,
+      });
+
+      const duration = Date.now() - startTime;
+      logAIResponse(modelName, result.usage?.totalTokens || 0, duration, userId);
+
+      return result.text;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logError(error as Error, {
+        service: 'LLM',
+        method: 'generatePlannerCompletion',
+        userId,
+        duration,
+        modelName,
+      });
+      throw new ExternalServiceError('AI service unavailable. Please try again.');
+    }
+  }
+
+  /**
    * Generate JSON response with automatic parsing
    * Useful for structured outputs (quiz, detection, planner)
    */
@@ -144,12 +197,18 @@ export class LLMService {
       temperature?: number;
       maxTokens?: number;
       userId?: string;
+      usePlannerModel?: boolean; // Use dedicated planner model (gpt-4o/gpt-5) for complex tasks
     } = {}
   ): Promise<T> {
-    const rawResponse = await this.generateCompletion(systemPrompt, userPrompt, {
-      useUtilityModel: true,
-      ...options,
-    });
+    const { usePlannerModel, ...restOptions } = options;
+    
+    // Use planner model for complex generation tasks, utility model for simple ones
+    const rawResponse = usePlannerModel 
+      ? await this.generatePlannerCompletion(systemPrompt, userPrompt, restOptions)
+      : await this.generateCompletion(systemPrompt, userPrompt, {
+          useUtilityModel: true,
+          ...restOptions,
+        });
 
     try {
       // Try to extract JSON from markdown code blocks if present

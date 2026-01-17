@@ -2,13 +2,32 @@ import { toast } from 'sonner';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
+// Timeout configuration
+const DEFAULT_TIMEOUT = 30000; // 30 seconds for most requests
+const LONG_OPERATION_TIMEOUT = 120000; // 120 seconds for AI generation (plans, quizzes)
+
+// Endpoints that need longer timeout (AI generation)
+const LONG_TIMEOUT_PATTERNS = [
+  '/generate',
+  '/planner/generate',
+  '/quiz/generate',
+];
+
 class ApiClient {
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit & { timeout?: number } = {}
   ): Promise<T> {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     
+    // Determine timeout based on endpoint
+    const isLongOperation = LONG_TIMEOUT_PATTERNS.some(pattern => endpoint.includes(pattern));
+    const timeout = options.timeout ?? (isLongOperation ? LONG_OPERATION_TIMEOUT : DEFAULT_TIMEOUT);
+    
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
@@ -22,6 +41,7 @@ class ApiClient {
       const response = await fetch(`${API_URL}${endpoint}`, {
         ...options,
         headers,
+        signal: controller.signal,
       });
 
       // Handle rate limiting (429) - returns plain text
@@ -75,6 +95,13 @@ class ApiClient {
 
       return data.data as T;
     } catch (error) {
+      // Handle timeout (AbortError)
+      if (error instanceof Error && error.name === 'AbortError') {
+        const timeoutError = 'Request timed out. Please try again.';
+        toast.error(timeoutError);
+        throw new Error(timeoutError);
+      }
+      
       // Handle network errors or JSON parsing errors
       if (error instanceof Error) {
         throw error;
@@ -82,6 +109,8 @@ class ApiClient {
       const networkError = 'Network error occurred. Please check your connection.';
       toast.error(networkError);
       throw new Error(networkError);
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
