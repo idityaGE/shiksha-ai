@@ -22,9 +22,13 @@ import {
   RiSaveLine,
   RiLoader4Line,
   RiCheckLine,
+  RiSunLine,
+  RiMoonLine,
+  RiComputerLine,
 } from '@remixicon/react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/hooks/use-auth';
+import { useTheme } from 'next-themes';
 
 const BOARDS = ['CBSE', 'ICSE', 'State Board'];
 
@@ -55,6 +59,8 @@ interface ProfileData {
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [profileData, setProfileData] = useState<ProfileData>({
@@ -67,6 +73,7 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
+    setMounted(true);
     fetchProfile();
   }, []);
 
@@ -382,20 +389,38 @@ export default function SettingsPage() {
               <CardDescription>Customize how Shiksha AI looks</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <Label>Theme</Label>
-                <Select defaultValue="dark" disabled>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="light">Light</SelectItem>
-                    <SelectItem value="dark">Dark</SelectItem>
-                    <SelectItem value="system">System</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    variant={mounted && theme === 'light' ? 'default' : 'outline'}
+                    className="flex flex-col items-center gap-2 h-auto py-3"
+                    onClick={() => setTheme('light')}
+                  >
+                    <RiSunLine className="h-5 w-5" />
+                    <span className="text-xs">Light</span>
+                  </Button>
+                  <Button
+                    variant={mounted && theme === 'dark' ? 'default' : 'outline'}
+                    className="flex flex-col items-center gap-2 h-auto py-3"
+                    onClick={() => setTheme('dark')}
+                  >
+                    <RiMoonLine className="h-5 w-5" />
+                    <span className="text-xs">Dark</span>
+                  </Button>
+                  <Button
+                    variant={mounted && theme === 'system' ? 'default' : 'outline'}
+                    className="flex flex-col items-center gap-2 h-auto py-3"
+                    onClick={() => setTheme('system')}
+                  >
+                    <RiComputerLine className="h-5 w-5" />
+                    <span className="text-xs">System</span>
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Choose your preferred color scheme
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">Theme customization coming soon</p>
             </CardContent>
           </Card>
         </div>
