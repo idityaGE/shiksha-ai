@@ -20,6 +20,7 @@ import {
 } from '@remixicon/react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Markdown } from '@/components/ui/markdown';
 
 interface Question {
   question: string;
@@ -298,7 +299,10 @@ export default function QuizAttemptPage() {
                     {result.is_correct ? <RiCheckLine className="h-4 w-4" /> : <RiCloseLine className="h-4 w-4" />}
                   </div>
                   <div className="flex-1 space-y-2">
-                    <p className="font-medium text-sm">Q{index + 1}. {result.question}</p>
+                    <div className="font-medium text-sm">
+                      <span className="mr-1">Q{index + 1}.</span>
+                      <Markdown content={result.question} className="inline [&_p]:inline [&_p]:my-0" />
+                    </div>
                     <div className="space-y-1 text-sm">
                       <p className="flex items-center gap-2">
                         <span className="text-muted-foreground">Your answer:</span>
@@ -315,9 +319,12 @@ export default function QuizAttemptPage() {
                         </p>
                       )}
                       {result.explanation && (
-                        <p className="text-muted-foreground text-xs mt-2 italic border-l-2 border-muted pl-2">
-                          {result.explanation}
-                        </p>
+                        <div className="mt-2 border-l-2 border-muted pl-2">
+                          <Markdown 
+                            content={result.explanation} 
+                            className="text-xs text-muted-foreground [&_p]:my-1"
+                          />
+                        </div>
                       )}
                     </div>
                   </div>
@@ -377,9 +384,9 @@ export default function QuizAttemptPage() {
       <Card className="w-full">
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
-            <CardTitle className="text-lg leading-relaxed flex-1">
-              {currentQ.question}
-            </CardTitle>
+            <div className="text-lg leading-relaxed flex-1">
+              <Markdown content={currentQ.question} className="[&_p]:my-0" />
+            </div>
             {currentQ.difficulty && (
               <Badge variant="outline" className="capitalize shrink-0">
                 {currentQ.difficulty}
@@ -413,7 +420,8 @@ export default function QuizAttemptPage() {
                   htmlFor={`q${currentQuestion}-option-${key}`} 
                   className="flex-1 cursor-pointer text-sm leading-relaxed"
                 >
-                  <span className="font-semibold mr-2">{key}.</span>{option}
+                  <span className="font-semibold mr-2">{key}.</span>
+                  <Markdown content={option} className="inline [&_p]:inline [&_p]:my-0" />
                 </Label>
               </div>
             ))}

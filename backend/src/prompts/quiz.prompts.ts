@@ -88,7 +88,14 @@ ${difficultyGuide}
    - Make distractors (wrong options) plausible but clearly incorrect
    - Mix conceptual and application-based questions
 
-3. Distribution (for ${context.numQuestions} questions):
+3. Math & Science Formatting (IMPORTANT):
+   - Use LaTeX for math: inline $E = mc^2$ or block $$F = ma$$
+   - Chemical equations: $\\ce{2H2 + O2 -> 2H2O}$
+   - Fractions: $\\frac{a}{b}$, roots: $\\sqrt{x}$, powers: $x^2$
+   - Symbols: $\\alpha$, $\\beta$, $\\theta$, $\\pi$, $\\Delta$
+   - Chemical formulas: $\\ce{H2SO4}$, ions: $\\ce{Na+}$
+
+4. Distribution (for ${context.numQuestions} questions):
    - Ensure variety in topics within the chapter
    - Balance between "what/define" and "why/how/apply" questions
    - Include at least one numerical/calculation question if applicable

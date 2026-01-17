@@ -3,8 +3,7 @@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { RiSparklingLine, RiUser3Line } from '@remixicon/react';
 import { cn } from '@/lib/utils';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Markdown } from '@/components/ui/markdown';
 import type { TutorMessage } from '@/lib/types/tutor.types';
 
 interface ChatMessageProps {
@@ -56,15 +55,13 @@ export function ChatMessage({ message, userName, isStreaming }: ChatMessageProps
           className={cn(
             'rounded-lg px-3 py-2 text-sm leading-relaxed',
             isAssistant 
-              ? 'bg-muted/50 text-left prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-2 prose-code:text-xs'
+              ? 'bg-muted/50 text-left p-6'
               : 'bg-primary text-primary-foreground inline-block ml-auto max-w-[85%]'
           )}
         >
           {isAssistant ? (
             <>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {message.content}
-              </ReactMarkdown>
+              <Markdown content={message.content} />
               {isStreaming && (
                 <span className="inline-block h-4 w-0.5 animate-pulse bg-foreground ml-0.5 align-middle" />
               )}

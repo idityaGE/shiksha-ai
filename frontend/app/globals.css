@@ -173,3 +173,119 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* KaTeX Math Styling */
+.katex {
+  font-size: 1.05em;
+}
+
+.katex-display {
+  margin: 1rem 0 !important;
+  padding: 0.75rem 1rem;
+  background: oklch(0.97 0 0);
+  border-radius: 0.5rem;
+  border: 1px solid oklch(0.92 0 0);
+  overflow-x: auto;
+}
+
+.dark .katex-display {
+  background: oklch(0.18 0 0);
+  border-color: oklch(0.26 0 0);
+}
+
+/* Inline math styling */
+.katex:not(.katex-display .katex) {
+  padding: 0.1em 0.2em;
+  background: oklch(0.97 0 0);
+  border-radius: 0.25rem;
+}
+
+.dark .katex:not(.katex-display .katex) {
+  background: oklch(0.23 0 0);
+}
+
+/* Code syntax highlighting improvements */
+.hljs {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* Better code block styling */
+pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 0;
+}
+
+/* Syntax highlighting colors - Light mode */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-title,
+.hljs-section,
+.hljs-doctag,
+.hljs-name,
+.hljs-strong {
+  color: oklch(0.45 0.15 270);
+}
+
+.hljs-string,
+.hljs-title.class_,
+.hljs-title.function_ {
+  color: oklch(0.45 0.12 150);
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: oklch(0.55 0 0);
+  font-style: italic;
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag .hljs-attr {
+  color: oklch(0.5 0.15 30);
+}
+
+.hljs-attribute,
+.hljs-built_in,
+.hljs-class .hljs-title {
+  color: oklch(0.5 0.12 200);
+}
+
+/* Syntax highlighting colors - Dark mode */
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-title,
+.dark .hljs-section,
+.dark .hljs-doctag,
+.dark .hljs-name,
+.dark .hljs-strong {
+  color: oklch(0.75 0.15 270);
+}
+
+.dark .hljs-string,
+.dark .hljs-title.class_,
+.dark .hljs-title.function_ {
+  color: oklch(0.75 0.12 150);
+}
+
+.dark .hljs-comment,
+.dark .hljs-quote {
+  color: oklch(0.6 0 0);
+}
+
+.dark .hljs-number,
+.dark .hljs-literal,
+.dark .hljs-variable,
+.dark .hljs-template-variable,
+.dark .hljs-tag .hljs-attr {
+  color: oklch(0.75 0.15 30);
+}
+
+.dark .hljs-attribute,
+.dark .hljs-built_in,
+.dark .hljs-class .hljs-title {
+  color: oklch(0.75 0.12 200);
+}
