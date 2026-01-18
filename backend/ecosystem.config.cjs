@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'shiksha-api',
       script: 'src/index.ts',
-      interpreter: 'bun',
+      interpreter: '/home/ubuntu/.bun/bin/bun',
       cwd: '/home/ubuntu/shiksha-ai/backend',
       env_file: '.env',
       env: {
