@@ -49,7 +49,7 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/api/', limiter);
+// app.use('/api/', limiter);
 
 // Health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
