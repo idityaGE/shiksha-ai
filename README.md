@@ -1,6 +1,6 @@
 # Shiksha AI
 
-An AI-powered educational platform designed for Indian students following CBSE curriculum. The platform provides personalized tutoring, adaptive quizzes, study planning, and progress tracking.
+An AI-powered educational platform designed for Indian students. Supports CBSE, ICSE, and state board curricula. The platform provides personalized tutoring, adaptive quizzes, study planning, and progress tracking.
 
 **Live Demo**: [shiksha-ai.vercel.app](https://shiksha-ai-beta.vercel.app)
 
@@ -12,12 +12,12 @@ An AI-powered educational platform designed for Indian students following CBSE c
 
 ### AI Tutor
 - Conversational tutoring powered by GPT-5
-- Context-aware responses using RAG (Retrieval Augmented Generation) with NCERT content
+- Context-aware responses using RAG (Retrieval Augmented Generation) with textbook content
 - Support for mathematical equations (LaTeX) and chemical formulas
 - Session management with conversation history
 
 ### Quiz System
-- AI-generated quizzes based on NCERT syllabus
+- AI-generated quizzes aligned with your syllabus
 - Adaptive difficulty levels (easy, medium, hard)
 - Detailed explanations for each answer
 - Performance tracking and weak topic identification
