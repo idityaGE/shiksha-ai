@@ -1,4 +1,4 @@
-import { createOpenAI } from '@ai-sdk/openai';
+import { openai } from '@ai-sdk/openai';
 import { streamText, generateText } from 'ai';
 import { logger, logAIRequest, logAIResponse, logStreamStart, logStreamEnd, logError } from '../utils/logger';
 import { ExternalServiceError } from '../utils/apiError';
@@ -15,24 +15,16 @@ export class LLMService {
   private tutorModel;
   private utilityModel;
   private plannerModel;
-  private openai;
 
   constructor() {
-    // Initialize OpenAI provider with legacy chat completions API
-    // The new Responses API (/v1/responses) has issues with some project-scoped keys
-    this.openai = createOpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      compatibility: 'strict', // Use standard OpenAI API
-    });
-
     // Initialize models from environment
     const tutorModelName = process.env.OPENAI_MODEL_TUTOR || 'gpt-4o';
     const utilityModelName = process.env.OPENAI_MODEL_UTILITY || 'gpt-4o-mini';
     const plannerModelName = process.env.OPENAI_MODEL_PLANNER || 'gpt-4o';
 
-    this.tutorModel = this.openai(tutorModelName);
-    this.utilityModel = this.openai(utilityModelName);
-    this.plannerModel = this.openai(plannerModelName);
+    this.tutorModel = openai(tutorModelName);
+    this.utilityModel = openai(utilityModelName);
+    this.plannerModel = openai(plannerModelName);
 
     logger.info({ tutorModel: tutorModelName, utilityModel: utilityModelName, plannerModel: plannerModelName }, 'LLM Service initialized');
   }
