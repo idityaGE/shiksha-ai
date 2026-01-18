@@ -4,7 +4,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 // Timeout configuration
 const DEFAULT_TIMEOUT = 30000; // 30 seconds for most requests
-const LONG_OPERATION_TIMEOUT = 120000; // 120 seconds for AI generation (plans, quizzes)
+const LONG_OPERATION_TIMEOUT = 180000; // 180 seconds (3 min) for AI generation (plans, quizzes)
 
 // Endpoints that need longer timeout (AI generation)
 const LONG_TIMEOUT_PATTERNS = [

@@ -213,7 +213,12 @@ export class LLMService {
     try {
       // Try to extract JSON from markdown code blocks if present
       const jsonMatch = rawResponse.match(/```json\s*\n?([\s\S]*?)\n?```/);
-      const jsonString = jsonMatch && jsonMatch[1] ? jsonMatch[1] : rawResponse;
+      let jsonString = jsonMatch && jsonMatch[1] ? jsonMatch[1] : rawResponse;
+
+      // Fix LaTeX escaping issues in JSON
+      // LaTeX uses single backslashes (\frac, \binom, etc.) which break JSON parsing
+      // We need to double-escape them, but only for LaTeX commands, not existing JSON escapes
+      jsonString = this.fixLatexEscaping(jsonString);
 
       // Parse and return
       const parsed = JSON.parse(jsonString.trim());
@@ -226,6 +231,17 @@ export class LLMService {
       });
       throw new ExternalServiceError('Failed to parse AI response. Please try again.');
     }
+  }
+
+  /**
+   * Fix LaTeX escaping in JSON strings
+   * LaTeX commands like \frac, \binom, \sum need to be double-escaped for JSON
+   */
+  private fixLatexEscaping(jsonString: string): string {
+    // Common LaTeX commands that need escaping
+    // Match backslash followed by a letter (LaTeX command) that isn't already double-escaped
+    // This regex finds \command but not \\command
+    return jsonString.replace(/(?<!\\)\\(?=[a-zA-Z{}_^,])/g, '\\\\');
   }
 
   /**

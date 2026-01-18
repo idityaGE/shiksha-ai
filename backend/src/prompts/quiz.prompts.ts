@@ -88,12 +88,15 @@ ${difficultyGuide}
    - Make distractors (wrong options) plausible but clearly incorrect
    - Mix conceptual and application-based questions
 
-3. Math & Science Formatting (IMPORTANT):
-   - Use LaTeX for math: inline $E = mc^2$ or block $$F = ma$$
-   - Chemical equations: $\\ce{2H2 + O2 -> 2H2O}$
-   - Fractions: $\\frac{a}{b}$, roots: $\\sqrt{x}$, powers: $x^2$
-   - Symbols: $\\alpha$, $\\beta$, $\\theta$, $\\pi$, $\\Delta$
-   - Chemical formulas: $\\ce{H2SO4}$, ions: $\\ce{Na+}$
+3. Math & Science Formatting (CRITICAL - JSON ESCAPING):
+   - Use LaTeX for math BUT with DOUBLE BACKSLASHES for JSON: 
+   - Inline math: $E = mc^2$ or block $$F = ma$$
+   - Fractions: $\\\\frac{a}{b}$, roots: $\\\\sqrt{x}$, powers: $x^2$
+   - Binomial: $\\\\binom{n}{r}$, summation: $\\\\sum_{i=1}^{n}$
+   - Symbols: $\\\\alpha$, $\\\\beta$, $\\\\theta$, $\\\\pi$, $\\\\Delta$
+   - Chemical equations: $\\\\ce{2H2 + O2 -> 2H2O}$
+   - Chemical formulas: $\\\\ce{H2SO4}$, ions: $\\\\ce{Na+}$
+   - ALWAYS use \\\\ (double backslash) in JSON output, NOT single \\
 
 4. Distribution (for ${context.numQuestions} questions):
    - Ensure variety in topics within the chapter

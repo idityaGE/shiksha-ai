@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.ts';
 import { checkDatabaseConnection } from './db/supabase.ts';
+import { ragService } from './services/rag.service.ts';
 
 // Import routes
 import authRoutes from './routes/auth.routes.ts';
@@ -61,6 +62,29 @@ app.get('/health', async (req: Request, res: Response) => {
     environment: NODE_ENV,
     database: dbHealthy ? 'connected' : 'disconnected',
   });
+});
+
+// Debug endpoint to check Weaviate data (development only)
+app.get('/debug/rag', async (req: Request, res: Response) => {
+  if (NODE_ENV !== 'development') {
+    return res.status(403).json({ error: 'Debug endpoint only available in development' });
+  }
+
+  try {
+    const schema = await ragService.getSchemaInfo();
+    const sampleData = await ragService.getSampleData(10);
+    
+    res.json({
+      schema: schema ? {
+        class: schema.class,
+        properties: schema.properties?.map((p: any) => ({ name: p.name, dataType: p.dataType })),
+      } : null,
+      sampleData,
+      message: 'Use this to check actual field values in Weaviate',
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
 });
 
 // Root endpoint

@@ -16,7 +16,6 @@ export const logger = pino({
           colorize: true,
           translateTime: 'SYS:standard',
           ignore: 'pid,hostname',
-          messageFormat: '{levelLabel} - {msg}',
         },
       }
     : undefined, // JSON in production

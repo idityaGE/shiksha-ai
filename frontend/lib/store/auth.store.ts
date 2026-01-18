@@ -127,12 +127,13 @@ export const useAuthStore = create<AuthState>()(
           const isRateLimited = errorMessage.includes('Too many requests');
           const isNetworkError = errorMessage.includes('Network error');
           const isValidationError = errorMessage.includes('Validation');
+          const isTimeout = errorMessage.includes('timed out') || errorMessage.includes('timeout');
           const isAuthError = errorMessage.includes('Unauthorized') || 
                               errorMessage.includes('Invalid token') ||
                               errorMessage.includes('Token expired');
           
-          // Only logout on actual auth errors
-          if (isAuthError && !isRateLimited && !isNetworkError && !isValidationError) {
+          // Only logout on actual auth errors (not rate limits, network issues, timeouts, or validation)
+          if (isAuthError && !isRateLimited && !isNetworkError && !isValidationError && !isTimeout) {
             if (typeof window !== 'undefined') {
               localStorage.removeItem('token');
             }

@@ -3,13 +3,14 @@ import { logger, logRAGQuery, logRAGError, logError } from '../utils/logger';
 
 /**
  * NCERT Chunk structure in Weaviate
+ * Field names match the actual Weaviate schema
  */
 export interface NCERTChunk {
   text: string;
-  class: string;
+  class_name: string;  // Was 'class' - actual field name in Weaviate
   board: string;
   subject: string;
-  chapter: string;
+  chapter_no: string;  // Was 'chapter' - actual field name in Weaviate
 }
 
 /**
@@ -35,28 +36,47 @@ export interface RAGContext {
   };
 }
 
+// Subject name mapping: App uses full names, Weaviate uses folder names
+const SUBJECT_MAP: Record<string, string> = {
+  'mathematics': 'math',
+  'physics': 'physics',
+  'chemistry': 'chemistry',
+  'english': 'english',
+  'hindi': 'hindi',
+  'biology': 'biology',
+  // Add more as needed
+};
+
 /**
  * RAG Service for Weaviate integration
- * Uses Weaviate's hybrid search (BM25 + vector) for fast, accurate results
+ * Supports both hybrid search (BM25 + vector) and BM25-only keyword search
  */
 export class RAGService {
   private client!: WeaviateClient;
   private className: string;
   private isInitialized: boolean = false;
   private hybridAlpha: number; // 0 = pure keyword, 1 = pure vector, 0.5 = balanced
+  private useBM25Only: boolean; // Use BM25 keyword search only (no vectorizer required)
 
   constructor() {
     const weaviateUrl = process.env.WEAVIATE_URL;
-    const weaviateScheme = process.env.WEAVIATE_SCHEME as 'http' | 'https' || 'https';
     const weaviateApiKey = process.env.WEAVIATE_API_KEY;
     this.className = process.env.WEAVIATE_CLASS_NAME || 'NCERTChunks';
     // Hybrid search alpha: 0 = pure BM25 keyword, 1 = pure vector, 0.5 = balanced (default)
     this.hybridAlpha = parseFloat(process.env.WEAVIATE_HYBRID_ALPHA || '0.5');
+    // Use BM25-only search if vectorizer is not configured (set to 'true' to force BM25)
+    this.useBM25Only = process.env.WEAVIATE_USE_BM25_ONLY === 'true';
 
     if (!weaviateUrl) {
       logger.warn('WEAVIATE_URL not configured - RAG service will be disabled');
       return;
     }
+
+    // Auto-detect scheme: use HTTPS for cloud (.weaviate.cloud), HTTP for local
+    // Can be overridden via WEAVIATE_SCHEME env var
+    const isCloudInstance = weaviateUrl.includes('.weaviate.cloud');
+    const weaviateScheme = (process.env.WEAVIATE_SCHEME as 'http' | 'https') || 
+                           (isCloudInstance ? 'https' : 'http');
 
     // Initialize Weaviate client
     const clientConfig: any = {
@@ -79,8 +99,9 @@ export class RAGService {
         className: this.className,
         hasApiKey: !!weaviateApiKey,
         hybridAlpha: this.hybridAlpha,
+        searchMode: this.useBM25Only ? 'BM25 keyword only' : 'Hybrid (BM25 + vector)',
       },
-      'RAG Service initialized with hybrid search'
+      `RAG Service initialized with ${this.useBM25Only ? 'BM25 keyword' : 'hybrid'} search`
     );
   }
 
@@ -113,23 +134,38 @@ export class RAGService {
     }
 
     try {
-      // Build Weaviate query with hybrid search (BM25 + vector)
-      // No external embedding API call needed - Weaviate handles vectorization internally
+      // Build Weaviate query
+      // Use BM25 keyword search if vectorizer not available, otherwise use hybrid
       let graphQuery = this.client.graphql
         .get()
         .withClassName(this.className)
-        .withFields('text class board subject chapter')
-        .withHybrid({ query, alpha: this.hybridAlpha })
+        .withFields('text class_name board subject chapter_no')
         .withLimit(limit);
 
+      // Add search method based on configuration
+      if (this.useBM25Only) {
+        // BM25 keyword search - no vectorizer required
+        graphQuery = graphQuery.withBm25({ query });
+      } else {
+        // Hybrid search (BM25 + vector) - requires vectorizer
+        graphQuery = graphQuery.withHybrid({ query, alpha: this.hybridAlpha });
+      }
+
       // Add filters if provided
+      // Note: Weaviate stores data as:
+      //   - class_name: "class11", "class12" (lowercase, no space)
+      //   - chapter_no: "01", "02", etc. (chapter number, not name)
+      //   - subject: "physics", "chemistry" (lowercase)
+      //   - board: "cbse" (lowercase)
       const whereFilters: any[] = [];
 
       if (filters.class) {
+        // Convert class number to format: "class11", "class12"
+        const classValue = `class${filters.class}`;
         whereFilters.push({
-          path: ['class'],
+          path: ['class_name'],
           operator: 'Equal',
-          valueString: filters.class.toString(),
+          valueString: classValue,
         });
       }
 
@@ -137,25 +173,25 @@ export class RAGService {
         whereFilters.push({
           path: ['board'],
           operator: 'Equal',
-          valueString: filters.board,
+          valueString: filters.board.toLowerCase(),
         });
       }
 
       if (filters.subject) {
+        // Map app subject names to Weaviate folder names
+        // e.g., "Mathematics" -> "math", "Physics" -> "physics"
+        const subjectLower = filters.subject.toLowerCase();
+        const mappedSubject = SUBJECT_MAP[subjectLower] || subjectLower;
         whereFilters.push({
           path: ['subject'],
           operator: 'Equal',
-          valueString: filters.subject,
+          valueString: mappedSubject,
         });
       }
 
-      if (filters.chapter) {
-        whereFilters.push({
-          path: ['chapter'],
-          operator: 'Equal',
-          valueString: filters.chapter,
-        });
-      }
+      // Note: We don't filter by chapter_no because it's a number (01, 02, etc.)
+      // and the input is chapter name (States of Matter, Equilibrium, etc.)
+      // The BM25 keyword search will handle finding relevant content by chapter name
 
       // Apply filters if any exist
       if (whereFilters.length > 0) {
@@ -177,7 +213,7 @@ export class RAGService {
       const contextText = chunks
         .map((chunk, idx) => {
           return `[NCERT Excerpt ${idx + 1}]
-Class: ${chunk.class} | Board: ${chunk.board} | Subject: ${chunk.subject} | Chapter: ${chunk.chapter}
+Class: ${chunk.class_name} | Board: ${chunk.board} | Subject: ${chunk.subject} | Chapter: ${chunk.chapter_no}
 ${chunk.text}`;
         })
         .join('\n\n---\n\n');
@@ -283,6 +319,29 @@ ${chunk.text}`;
       return schema;
     } catch (error) {
       logError(error as Error, { service: 'RAG', method: 'getSchemaInfo' });
+      return null;
+    }
+  }
+
+  /**
+   * Get sample data from Weaviate (for debugging field values)
+   */
+  async getSampleData(limit: number = 5): Promise<any> {
+    if (!this.isInitialized) {
+      return null;
+    }
+
+    try {
+      const result = await this.client.graphql
+        .get()
+        .withClassName(this.className)
+        .withFields('text class_name board subject chapter_no')
+        .withLimit(limit)
+        .do();
+      
+      return result.data?.Get?.[this.className] || [];
+    } catch (error) {
+      logError(error as Error, { service: 'RAG', method: 'getSampleData' });
       return null;
     }
   }
