@@ -1,10 +1,11 @@
-import express, { type Request, type Response } from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.ts';
 import { checkDatabaseConnection } from './db/supabase.ts';
 import { ragService } from './services/rag.service.ts';
+import { logger } from './utils/logger.ts';
 
 // Import routes
 import authRoutes from './routes/auth.routes.ts';
@@ -40,6 +41,34 @@ app.use(
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Request logging middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+  
+  // Log when response finishes
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const logData = {
+      method: req.method,
+      url: req.originalUrl,
+      status: res.statusCode,
+      duration: `${duration}ms`,
+      ip: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+    };
+    
+    // Color code by status
+    if (res.statusCode >= 500) {
+      logger.error(logData, `${req.method} ${req.originalUrl}`);
+    } else if (res.statusCode >= 400) {
+      logger.warn(logData, `${req.method} ${req.originalUrl}`);
+    } else {
+      logger.info(logData, `${req.method} ${req.originalUrl}`);
+    }
+  });
+  
+  next();
+});
 
 // Rate limiting
 const limiter = rateLimit({
